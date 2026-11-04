@@ -123,11 +123,7 @@ struct ShopView: View {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 280 : 150), spacing: 12)], spacing: 12) {
                             ForEach(visible) { product in
-                                NavigationLink(value: product) {
-                                    ProductCard(product: product)
-                                }
-                                .buttonStyle(.plain)
-                                .simultaneousGesture(TapGesture().onEnded { recordSearch() })
+                                ProductCard(product: product, onOpen: { recordSearch() })
                             }
                         }
                         .padding()

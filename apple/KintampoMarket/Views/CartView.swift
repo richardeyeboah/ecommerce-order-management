@@ -9,7 +9,7 @@ struct CartView: View {
 
     /// In-stock items from the departments already in the cart, best match first.
     private var suggestions: [Product] {
-        let inCart = Set(cart.items.map(\.product.id))
+        let inCart = Set(cart.items.map(\.product.id) + saved.products.map(\.id))
         let categories = Set(cart.items.map(\.product.category))
         guard !categories.isEmpty else { return [] }
         return Array(catalog.products
@@ -51,12 +51,14 @@ struct CartView: View {
                         Text("Add items from the shop. Free pickup in Columbus.")
                     }
                 } actions: {
-                    Button("Browse shop") {
+                    Button {
                         cart.refreshNotice = nil
                         AppRouter.shared.requestedTab = 1
+                    } label: {
+                        Text("Browse shop").padding(.horizontal, 28)
                     }
                     .buttonStyle(PrimaryButtonStyle())
-                    .frame(maxWidth: 260)
+                    .fixedSize()
                 }
             } else {
                 List {
@@ -117,11 +119,8 @@ struct CartView: View {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
                                     ForEach(suggestions) { product in
-                                        NavigationLink(value: product) {
-                                            ProductCard(product: product, compact: true)
+                                        ProductCard(product: product, compact: true)
                                                 .frame(width: typeSize.isAccessibilitySize ? 240 : 150)
-                                        }
-                                        .buttonStyle(.plain)
                                     }
                                 }
                                 .padding(.vertical, 6)

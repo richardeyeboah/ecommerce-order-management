@@ -170,11 +170,8 @@ struct HomeView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(products) { product in
-                            NavigationLink(value: product) {
-                                ProductCard(product: product, compact: true)
+                            ProductCard(product: product, compact: true)
                                     .frame(width: typeSize.isAccessibilitySize ? 240 : 150)
-                            }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal)
@@ -238,10 +235,7 @@ struct HomeView: View {
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 280 : 150), spacing: 12)], spacing: 12) {
                     ForEach(catalog.featured(limit: 12)) { product in
-                        NavigationLink(value: product) {
-                            ProductCard(product: product)
-                        }
-                        .buttonStyle(.plain)
+                        ProductCard(product: product)
                     }
                 }
                 .padding(.horizontal)
@@ -255,11 +249,8 @@ struct HomeView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(recent.products.prefix(8)) { product in
-                        NavigationLink(value: product) {
-                            ProductCard(product: product, compact: true, showQuickAdd: false)
+                        ProductCard(product: product, compact: true, showQuickAdd: false)
                                 .frame(width: 140)
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal)

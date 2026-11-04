@@ -4,14 +4,19 @@ struct ProductCard: View {
     let product: Product
     var compact = false
     var showQuickAdd = true
+    /// Runs when the card opens the product page (Shop records the search term).
+    var onOpen: (() -> Void)?
     @Bindable private var cart = CartStore.shared
     @Environment(\.dynamicTypeSize) private var typeSize
 
-    init(product: Product, compact: Bool = false, showQuickAdd: Bool = true) {
+    init(product: Product, compact: Bool = false, showQuickAdd: Bool = true, onOpen: (() -> Void)? = nil) {
         self.product = product
         self.compact = compact
         self.showQuickAdd = showQuickAdd
+        self.onOpen = onOpen
     }
+
+    private var padding: CGFloat { compact ? 8 : 10 }
 
     private var lowStock: Int? {
         guard let qty = product.stockQuantity, qty > 0, qty <= 5 else { return nil }
@@ -25,24 +30,31 @@ struct ProductCard: View {
 
     private var inCart: Int { cart.quantity(of: product.id) }
 
+    /// The whole card opens the product page. The quantity control's buttons are `.borderless`,
+    /// which is what lets a button inside a link handle its own taps.
     var body: some View {
+        NavigationLink(value: product) { content }
+            .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture().onEnded { onOpen?() })
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 8) {
             CachedProductImage(url: product.primaryImageURL, background: Brand.card)
                 .frame(height: imageHeight)
                 .frame(maxWidth: .infinity)
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    if product.effectiveInStock, showQuickAdd {
+                        CardQuantityControl(product: product, quantity: inCart).padding(6)
+                    }
+                }
                 .overlay(alignment: .topLeading) {
                     if !product.effectiveInStock {
                         Pill(text: "Out of stock").padding(8)
                     } else if let lowStock {
                         Pill(text: "Only \(lowStock) left", tint: Brand.redDark).padding(8)
-                    }
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    if product.effectiveInStock, showQuickAdd {
-                        CardQuantityControl(product: product, quantity: inCart)
-                            .padding(6)
                     }
                 }
 
@@ -61,9 +73,9 @@ struct ProductCard: View {
                 Text(product.name)
                     .font(.subheadline)
                     .foregroundStyle(Brand.ink)
-                    .lineLimit(typeSize.isAccessibilitySize ? 4 : 2)
+                    // Two lines reserved so cards in a row or shelf line up.
+                    .lineLimit(typeSize.isAccessibilitySize ? 4 : 2, reservesSpace: !typeSize.isAccessibilitySize)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minHeight: compact || typeSize.isAccessibilitySize ? 0 : 38, alignment: .top)
                 let details = [product.packLabel, product.brand]
                     .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
                     .filter { !$0.isEmpty }
@@ -75,7 +87,7 @@ struct ProductCard: View {
                 }
             }
         }
-        .brandCard(padding: compact ? 8 : 10)
+        .brandCard(padding: padding)
         .opacity(product.effectiveInStock ? 1 : 0.7)
     }
 }
@@ -111,21 +123,21 @@ private struct CardQuantityControl: View {
         }
         .foregroundStyle(quantity > 0 ? .white : Brand.red)
         .background(quantity > 0 ? Brand.red : Brand.card, in: Capsule())
+        .contentShape(Capsule())
         .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
         .animation(.snappy(duration: 0.18), value: quantity > 0)
-        .animation(.snappy(duration: 0.15), value: quantity)
         .sensoryFeedback(.selection, trigger: quantity)
-        .accessibilityElement(children: .contain)
     }
 
     private func button(_ symbol: String, label: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.subheadline.weight(.bold))
+                .foregroundStyle(quantity > 0 ? Color.white : Brand.red)
                 .frame(width: side, height: side)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .disabled(disabled)
         .opacity(disabled ? 0.45 : 1)
         .accessibilityLabel(label)

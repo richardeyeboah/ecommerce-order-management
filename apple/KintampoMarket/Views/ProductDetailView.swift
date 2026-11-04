@@ -171,11 +171,8 @@ struct ProductDetailView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
                                 ForEach(related) { item in
-                                    NavigationLink(value: item) {
-                                        ProductCard(product: item, compact: true)
+                                    ProductCard(product: item, compact: true)
                                             .frame(width: 150)
-                                    }
-                                    .buttonStyle(.plain)
                                 }
                             }
                         }
