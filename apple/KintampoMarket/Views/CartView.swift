@@ -2,12 +2,46 @@ import SwiftUI
 
 struct CartView: View {
     @Bindable private var cart = CartStore.shared
+    @Bindable private var saved = SavedForLaterStore.shared
+    @Bindable private var catalog = CatalogStore.shared
+    @State private var confirmClear = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// In-stock items from the departments already in the cart, best match first.
+    private var suggestions: [Product] {
+        let inCart = Set(cart.items.map(\.product.id))
+        let categories = Set(cart.items.map(\.product.category))
+        guard !categories.isEmpty else { return [] }
+        return Array(catalog.products
+            .filter { categories.contains($0.category) && !inCart.contains($0.id) && $0.effectiveInStock }
+            .prefix(10))
+    }
 
     private var money: (Double) -> String { { String(format: "$%.2f", $0) } }
 
     var body: some View {
         Group {
-            if cart.items.isEmpty {
+            if cart.items.isEmpty && !saved.products.isEmpty {
+                List {
+                    Section {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Your cart is empty").font(.headline).foregroundStyle(Brand.ink)
+                            Text("Move something back from Saved for later, or keep shopping.")
+                                .font(.subheadline).foregroundStyle(Brand.inkMuted)
+                        }
+                        .padding(.vertical, 4)
+                        Button("Browse shop") { AppRouter.shared.requestedTab = 1 }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Brand.red)
+                    }
+                    savedSection
+                }
+                #if os(iOS)
+                .listStyle(.insetGrouped)
+                #endif
+                .scrollContentBackground(.hidden)
+                .background(Brand.surface)
+            } else if cart.items.isEmpty {
                 ContentUnavailableView {
                     Label("Your cart is empty", systemImage: "cart")
                 } description: {
@@ -49,10 +83,20 @@ struct CartView: View {
                     Section {
                         ForEach(cart.items) { item in
                             CartRow(item: item)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        withAnimation(.easeOut(duration: 0.2)) { cart.remove(productID: item.product.id) }
+                                    } label: { Label("Remove", systemImage: "trash") }
+                                    Button {
+                                        withAnimation(.easeOut(duration: 0.2)) { saved.save(item) }
+                                    } label: { Label("Save for later", systemImage: "bookmark") }
+                                    .tint(Brand.forest)
+                                }
                         }
-                        .onDelete { indexSet in cart.remove(at: indexSet) }
+                    } header: {
+                        Text("\(cart.itemCount) item\(cart.itemCount == 1 ? "" : "s")")
                     } footer: {
-                        Text("Swipe left to remove an item.")
+                        Text("Swipe left on an item to remove it or save it for later.")
                     }
 
                     Section {
@@ -67,6 +111,30 @@ struct CartView: View {
                             .font(.caption)
                             .foregroundStyle(Brand.inkMuted)
                     }
+
+                    if !suggestions.isEmpty {
+                        Section {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(suggestions) { product in
+                                        NavigationLink(value: product) {
+                                            ProductCard(product: product, compact: true)
+                                                .frame(width: typeSize.isAccessibilitySize ? 240 : 150)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 16)
+                            }
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                        } header: {
+                            Text("You might also need")
+                        }
+                    }
+
+                    savedSection
                 }
                 #if os(iOS)
                 .listStyle(.insetGrouped)
@@ -93,18 +161,92 @@ struct CartView: View {
             }
         }
         .navigationTitle("Cart")
-        .task { await cart.refreshFromStore() }
-        .refreshable { await cart.refreshFromStore() }
+        .navigationDestination(for: Product.self) { ProductDetailView(product: $0) }
+        .task {
+            async let a: Void = cart.refreshFromStore()
+            async let b: Void = saved.refreshFromStore()
+            async let c: Void = catalog.loadIfNeeded()
+            _ = await (a, b, c)
+        }
+        .refreshable {
+            async let a: Void = cart.refreshFromStore()
+            async let b: Void = saved.refreshFromStore()
+            _ = await (a, b)
+        }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             if !cart.items.isEmpty {
                 ToolbarItem(placement: .destructiveAction) {
-                    Button("Clear", role: .destructive) { cart.clear() }
+                    Button("Clear", role: .destructive) { confirmClear = true }
+                        .confirmationDialog("Remove all items from your cart?", isPresented: $confirmClear, titleVisibility: .visible) {
+                            Button("Remove \(cart.itemCount) item\(cart.itemCount == 1 ? "" : "s")", role: .destructive) {
+                                withAnimation(.easeOut(duration: 0.2)) { cart.clear() }
+                            }
+                        }
                 }
             }
         }
+    }
+}
+
+extension CartView {
+    @ViewBuilder
+    fileprivate var savedSection: some View {
+        if !saved.products.isEmpty {
+            Section {
+                ForEach(saved.products) { product in
+                    SavedRow(product: product)
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                withAnimation(.easeOut(duration: 0.2)) { saved.remove(product.id) }
+                            } label: { Label("Remove", systemImage: "trash") }
+                        }
+                }
+            } header: {
+                Text("Saved for later (\(saved.products.count))")
+            }
+        }
+    }
+}
+
+private struct SavedRow: View {
+    let product: Product
+
+    var body: some View {
+        HStack(spacing: 12) {
+            NavigationLink(value: product) {
+                HStack(spacing: 12) {
+                    CachedProductImage(url: product.primaryImageURL, background: Brand.card)
+                        .frame(width: 56, height: 56)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(product.name)
+                            .font(.subheadline)
+                            .foregroundStyle(Brand.ink)
+                            .lineLimit(2)
+                        Text(product.effectiveInStock ? product.displayPrice : "Out of stock")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(product.effectiveInStock ? Brand.ink : Brand.inkMuted)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .buttonStyle(.plain)
+            if product.effectiveInStock {
+                Button("Move to cart") {
+                    withAnimation(.easeOut(duration: 0.2)) { SavedForLaterStore.shared.moveToCart(product) }
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Brand.red)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .overlay(Capsule().stroke(Brand.red.opacity(0.4)))
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 
@@ -115,7 +257,7 @@ private struct CartRow: View {
     var body: some View {
         HStack(spacing: 12) {
             NavigationLink(value: item.product) {
-                CachedProductImage(url: item.product.primaryImageURL)
+                CachedProductImage(url: item.product.primaryImageURL, background: Brand.card)
                     .frame(width: 60, height: 60)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -161,7 +303,6 @@ private struct CartRow: View {
             .clipShape(Capsule())
         }
         .padding(.vertical, 4)
-        .navigationDestination(for: Product.self) { ProductDetailView(product: $0) }
     }
 }
 

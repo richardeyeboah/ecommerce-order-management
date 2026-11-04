@@ -281,6 +281,17 @@ enum OrderStatusFlow {
         return flow[index + 1]
     }
 
+    /// Carrier tracking page for a label number (Shippo labels are USPS or UPS; FedEx by length).
+    static func trackingURL(_ number: String) -> URL? {
+        let n = number.filter { !$0.isWhitespace }.uppercased()
+        guard !n.isEmpty, let encoded = n.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return nil }
+        if n.hasPrefix("1Z") { return URL(string: "https://www.ups.com/track?tracknum=\(encoded)") }
+        if n.allSatisfy(\.isNumber), [12, 15].contains(n.count) {
+            return URL(string: "https://www.fedex.com/fedextrack/?trknbr=\(encoded)")
+        }
+        return URL(string: "https://tools.usps.com/go/TrackConfirmAction?tLabels=\(encoded)")
+    }
+
     static func label(_ status: String, shippingMethod: String?) -> String {
         if status == "delivered", isPickup(shippingMethod) { return "Picked up" }
         switch status {

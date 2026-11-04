@@ -4,6 +4,7 @@ struct ShopView: View {
     var initialCategory: String? = nil
 
     @Bindable private var catalog = CatalogStore.shared
+    @Bindable private var router = AppRouter.shared
     @State private var searchText = ""
     @State private var selectedCategory: String?
     @State private var inStockOnly = false
@@ -21,7 +22,7 @@ struct ShopView: View {
 
     /// Popular staples that currently match something in the catalog.
     private var popularSearches: [String] {
-        StoreConfig.popularSearches.filter { !catalog.filtered(search: $0, inStockOnly: true).isEmpty }
+        StoreConfig.popularSearches.filter { catalog.hasInStockMatch($0) }
     }
 
     private var showSuggestions: Bool {
@@ -52,7 +53,9 @@ struct ShopView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // Computed once per update; the grid, count and empty state all read this list.
+        let visible = self.visible
+        return VStack(spacing: 0) {
             searchBar
 
             ScrollViewReader { chips in
@@ -85,14 +88,14 @@ struct ShopView: View {
                     FlowLayout(spacing: 10) {
                         sortMenu
                         inStockToggle
-                        itemCount
+                        itemCount(visible.count)
                     }
                 } else {
                     HStack(spacing: 10) {
                         sortMenu
                         inStockToggle
                         Spacer()
-                        itemCount
+                        itemCount(visible.count)
                     }
                 }
             }
@@ -146,6 +149,17 @@ struct ShopView: View {
         }
         .refreshable { await catalog.reload() }
         .task(id: searchText) { await runServerSearch() }
+        .onChange(of: router.searchRequest) { _, _ in focusSearchSoon() }
+        .onAppear { if router.searchRequest > 0, initialCategory == nil { focusSearchSoon() } }
+    }
+
+    /// The tab switch animates; focusing a field mid-transition is dropped, so wait a beat.
+    private func focusSearchSoon() {
+        guard initialCategory == nil else { return }
+        Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            searchFocused = true
+        }
     }
 
     private var searchBar: some View {
@@ -218,8 +232,8 @@ struct ShopView: View {
         .controlSize(.small)
     }
 
-    private var itemCount: some View {
-        Text("\(visible.count) item\(visible.count == 1 ? "" : "s")")
+    private func itemCount(_ count: Int) -> some View {
+        Text("\(count) item\(count == 1 ? "" : "s")")
             .font(.caption)
             .foregroundStyle(Brand.inkMuted)
             .monospacedDigit()
@@ -371,7 +385,15 @@ struct ProductByIDView: View {
             } else if failed {
                 ContentUnavailableView("Product not found", systemImage: "bag", description: Text("It may have been removed."))
             } else {
-                ProgressView()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        RoundedRectangle(cornerRadius: Brand.cardRadius).fill(Brand.line.opacity(0.5)).frame(height: 300)
+                        RoundedRectangle(cornerRadius: 4).fill(Brand.line.opacity(0.5)).frame(width: 220, height: 20)
+                        RoundedRectangle(cornerRadius: 4).fill(Brand.line.opacity(0.5)).frame(width: 90, height: 28)
+                    }
+                    .padding()
+                }
+                .accessibilityLabel("Loading product")
             }
         }
         .task {

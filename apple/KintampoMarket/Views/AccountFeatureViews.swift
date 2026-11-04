@@ -9,9 +9,17 @@ struct WishlistView: View {
     var body: some View {
         Group {
             if !auth.isSignedIn {
-                ContentUnavailableView("Sign in to save items", systemImage: "heart", description: Text("Your wishlist syncs to your account."))
+                ContentUnavailableView {
+                    Label("Sign in to save items", systemImage: "heart")
+                } description: {
+                    Text("Your saved items sync to your account, on the app and the website.")
+                } actions: {
+                    Button("Sign in") { AppRouter.shared.requestedTab = 4 }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .frame(maxWidth: 220)
+                }
             } else if wishlist.isLoading && wishlist.products.isEmpty {
-                ProgressView()
+                List { SkeletonRows(count: 5) }
             } else if wishlist.products.isEmpty {
                 ContentUnavailableView("No saved items", systemImage: "heart", description: Text("Tap the heart on any product."))
             } else {
@@ -52,7 +60,7 @@ struct WishlistView: View {
                 }
             }
         }
-        .navigationTitle("Wishlist")
+        .navigationTitle("Saved items")
         .navigationDestination(for: Product.self) { ProductDetailView(product: $0) }
         .task { await wishlist.refresh() }
         .refreshable { await wishlist.refresh() }
@@ -252,7 +260,7 @@ struct BundlesView: View {
             if let errorMessage, bundles.isEmpty {
                 ContentUnavailableView("Could not load", systemImage: "shippingbox", description: Text(errorMessage))
             } else if !loaded {
-                ProgressView()
+                List { SkeletonRows(count: 4) }
             } else if bundles.isEmpty {
                 ContentUnavailableView("No bundles yet", systemImage: "shippingbox", description: Text("Check back soon."))
             } else {
@@ -320,7 +328,7 @@ struct BundleDetailView: View {
             }
             Section("Includes") {
                 if !loaded {
-                    ProgressView()
+                    SkeletonRows(count: 3)
                 } else if products.isEmpty {
                     Text("No items in this bundle yet.").foregroundStyle(Brand.inkMuted)
                 }

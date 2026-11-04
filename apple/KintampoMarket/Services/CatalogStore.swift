@@ -39,6 +39,21 @@ final class CatalogStore {
 
     private let cacheTTL: TimeInterval = 120
 
+    /// Last good catalog on disk, so a cold launch shows products immediately while the
+    /// network refresh runs (stale-while-revalidate). Not used against the test fixture server.
+    private let snapshotURL: URL? = AppConfig.fixtureURL == nil
+        ? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appending(path: "catalog-snapshot-v1.json")
+        : nil
+
+    init() {
+        if let snapshotURL, let data = try? Data(contentsOf: snapshotURL),
+           let saved = try? JSONDecoder().decode([Product].self, from: data) {
+            products = StorefrontCatalog.visible(saved)
+            index()
+        }
+    }
+
     var isFresh: Bool {
         guard let lastFetchedAt else { return false }
         return Date().timeIntervalSince(lastFetchedAt) < cacheTTL
@@ -71,15 +86,60 @@ final class CatalogStore {
         if inStockOnly {
             list = list.filter(\.effectiveInStock)
         }
-        let q = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if !q.isEmpty {
-            list = list.filter {
-                $0.name.lowercased().contains(q)
-                    || ($0.brand?.lowercased().contains(q) ?? false)
-                    || $0.category.lowercased().contains(q)
+        let tokens = Self.tokens(search)
+        guard !tokens.isEmpty else { return sort.apply(list) }
+        list = list.filter { matches($0, tokens) }
+        // Default order while searching is relevance; an explicit sort choice still wins.
+        guard sort == .newest else { return sort.apply(list) }
+        let query = tokens.joined(separator: " ")
+        return sort.apply(list).enumerated()
+            .sorted { a, b in
+                let ra = Self.rank(a.element, query: query), rb = Self.rank(b.element, query: query)
+                return ra == rb ? a.offset < b.offset : ra < rb
             }
-        }
-        return sort.apply(list)
+            .map(\.element)
+    }
+
+    /// True when at least one in-stock product matches (cheap: no sorting, stops at the first hit).
+    func hasInStockMatch(_ search: String) -> Bool {
+        let tokens = Self.tokens(search)
+        return !tokens.isEmpty && products.contains { $0.effectiveInStock && matches($0, tokens) }
+    }
+
+    /// Every word must appear somewhere (name, brand, category, size), in any order,
+    /// ignoring case and accents: "palm oil" finds "Oil, Palm"; "creme" finds "Crème".
+    private func matches(_ product: Product, _ tokens: [String]) -> Bool {
+        let haystack = searchIndex[product.id] ?? Self.haystack(product)
+        return tokens.allSatisfy { haystack.contains($0) }
+    }
+
+    /// Name starts with the query, then a word in the name does, then name contains, then other fields.
+    private static func rank(_ product: Product, query: String) -> Int {
+        let name = normalize(product.name)
+        if name.hasPrefix(query) { return 0 }
+        if name.contains(" " + query) || name.contains("(" + query) { return 1 }
+        if name.contains(query) { return 2 }
+        return 3
+    }
+
+    private var searchIndex: [String: String] = [:]
+
+    private func index() {
+        searchIndex = Dictionary(products.map { ($0.id, Self.haystack($0)) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    private static func haystack(_ p: Product) -> String {
+        normalize([p.name, p.brand ?? "", p.category, p.packLabel ?? ""].joined(separator: " "))
+    }
+
+    static func normalize(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+    }
+
+    static func tokens(_ search: String) -> [String] {
+        normalize(search)
+            .split(whereSeparator: { $0.isWhitespace || $0 == "," })
+            .map(String.init)
     }
 
     /// Warm cache at launch. Skips network if still fresh unless `force`.
@@ -89,20 +149,26 @@ final class CatalogStore {
     }
 
     func reload() async {
-        isLoading = true
+        // Only the first load shows skeletons; refreshes keep the current grid on screen.
+        isLoading = products.isEmpty
         errorMessage = nil
         defer { isLoading = false }
 
         do {
             // Wide list fetch; filter test SKUs; search/category stay local for snappy UI.
             let fetched = try await SupabaseService.shared.fetchProducts(limit: 500, listMode: true)
-            products = StorefrontCatalog.visible(fetched)
-            lastFetchedAt = Date()
-        } catch {
-            errorMessage = error.localizedDescription
-            if products.isEmpty {
-                products = []
+            let visible = StorefrontCatalog.visible(fetched)
+            if visible != products {
+                products = visible
+                index()
             }
+            lastFetchedAt = Date()
+            if let snapshotURL, let data = try? JSONEncoder().encode(fetched) {
+                Task.detached(priority: .utility) { try? data.write(to: snapshotURL, options: .atomic) }
+            }
+        } catch {
+            // With a saved catalog on screen, a failed refresh stays quiet.
+            if products.isEmpty { errorMessage = error.localizedDescription }
         }
     }
 }

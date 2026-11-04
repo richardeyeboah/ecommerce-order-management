@@ -1,4 +1,7 @@
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 import Observation
 
 @Observable
@@ -119,12 +122,22 @@ final class WishlistStore {
     private(set) var products: [Product] = []
     private(set) var isLoading = false
 
+    private var loadedFor: String?
+
     func contains(_ id: String) -> Bool { productIDs.contains(id) }
+
+    /// Product pages call this; the list is fetched once per signed-in user, then kept in sync
+    /// by `toggle`. Pull to refresh on the Saved screen still forces a reload.
+    func refreshIfNeeded() async {
+        guard loadedFor != AuthStore.shared.userId else { return }
+        await refresh()
+    }
 
     func refresh() async {
         guard AuthStore.shared.isSignedIn else {
             productIDs = []
             products = []
+            loadedFor = nil
             return
         }
         isLoading = true
@@ -132,6 +145,7 @@ final class WishlistStore {
         do {
             let rows = try await SupabaseService.shared.fetchWishlist()
             productIDs = Set(rows.map(\.productId))
+            loadedFor = AuthStore.shared.userId
             let ids = Array(productIDs)
             if ids.isEmpty {
                 products = []
@@ -143,22 +157,29 @@ final class WishlistStore {
         }
     }
 
+    /// Optimistic: the heart fills at once and rolls back if the server refuses.
     func toggle(_ product: Product) async {
         guard AuthStore.shared.isSignedIn else { return }
+        let removing = contains(product.id)
+        let previous = (productIDs, products)
+        #if os(iOS)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+        if removing {
+            productIDs.remove(product.id)
+            products.removeAll { $0.id == product.id }
+        } else {
+            productIDs.insert(product.id)
+            if !products.contains(where: { $0.id == product.id }) { products.insert(product, at: 0) }
+        }
         do {
-            if contains(product.id) {
+            if removing {
                 try await SupabaseService.shared.removeFromWishlist(productID: product.id)
-                productIDs.remove(product.id)
-                products.removeAll { $0.id == product.id }
             } else {
                 try await SupabaseService.shared.addToWishlist(productID: product.id)
-                productIDs.insert(product.id)
-                if !products.contains(where: { $0.id == product.id }) {
-                    products.insert(product, at: 0)
-                }
             }
         } catch {
-            // ignore
+            (productIDs, products) = previous
         }
     }
 }

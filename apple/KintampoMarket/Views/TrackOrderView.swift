@@ -2,9 +2,23 @@ import SwiftUI
 
 struct TrackOrderView: View {
     @State private var tracker = OrderTrackViewModel()
+    @Bindable private var auth = AuthStore.shared
 
     var body: some View {
         Form {
+            if auth.isSignedIn {
+                Section {
+                    NavigationLink {
+                        OrdersView()
+                    } label: {
+                        Label("Your orders", systemImage: "list.bullet.rectangle")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minHeight: 36)
+                    }
+                } footer: {
+                    Text("Orders on your account. For a guest order, look it up below.")
+                }
+            }
             Section("Order lookup") {
                 TextField("Order # (e.g. LQ-1042)", text: $tracker.orderID)
                     #if os(iOS)
@@ -33,16 +47,16 @@ struct TrackOrderView: View {
             }
 
             if let order = tracker.order {
-                Section("Status") {
+                Section {
+                    OrderProgressView(status: order.status, shippingMethod: order.shippingMethod,
+                                      trackingNumber: order.trackingNumber)
+                }
+                Section {
                     LabeledContent("Order", value: order.displayNumber)
-                    LabeledContent("Status", value: order.status.replacingOccurrences(of: "_", with: " ").capitalized)
                     if let total = order.totalAmount {
                         LabeledContent("Total") {
-                            Text(String(format: "$%.2f", total)).foregroundStyle(Brand.red).fontWeight(.semibold)
+                            Text(String(format: "$%.2f", total)).foregroundStyle(Brand.ink).fontWeight(.semibold).monospacedDigit()
                         }
-                    }
-                    if let tracking = order.trackingNumber, !tracking.isEmpty {
-                        LabeledContent("Tracking", value: tracking)
                     }
                 }
                 if !tracker.items.isEmpty {

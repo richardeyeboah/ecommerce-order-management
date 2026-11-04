@@ -11,6 +11,7 @@ struct ProductDetailView: View {
     @State private var related: [Product] = []
     @State private var buyBlockOffscreen = false
     @State private var showPhotoViewer = false
+    @State private var askSignIn = false
     @Bindable private var wishlist = WishlistStore.shared
     @Bindable private var auth = AuthStore.shared
     @Bindable private var cart = CartStore.shared
@@ -66,17 +67,26 @@ struct ProductDetailView: View {
                             }
                             .buttonStyle(.plain)
 
-                            if auth.isSignedIn {
-                                Button {
+                            Button {
+                                if auth.isSignedIn {
                                     Task { await wishlist.toggle(detail) }
-                                } label: {
+                                } else {
+                                    askSignIn = true
+                                }
+                            } label: {
                                     Image(systemName: wishlist.contains(detail.id) ? "heart.fill" : "heart")
                                         .font(.body.weight(.medium))
                                         .foregroundStyle(Brand.red)
                                         .frame(width: 44, height: 44)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(wishlist.contains(detail.id) ? "Remove from wishlist" : "Save to wishlist")
+                                        .contentTransition(.symbolEffect(.replace))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(wishlist.contains(detail.id) ? "Remove from saved items" : "Save item")
+                            .alert("Sign in to save items", isPresented: $askSignIn) {
+                                Button("Sign in") { AppRouter.shared.requestedTab = 4 }
+                                Button("Not now", role: .cancel) {}
+                            } message: {
+                                Text("Saved items sync to your account on the app and the website.")
                             }
                         }
                     }
@@ -108,7 +118,6 @@ struct ProductDetailView: View {
                         } else {
                             StatusChip(text: "In stock", color: Brand.success)
                         }
-                        StatusChip(text: "Free pickup", color: Brand.inkMuted, filled: false)
                     }
 
                     if let tags = detail.dietaryTags?.filter({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }), !tags.isEmpty {
@@ -134,7 +143,14 @@ struct ProductDetailView: View {
                     }
 
                 if isLoadingDetail, detail.description == nil {
-                    ProgressView().frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach([1.0, 0.92, 0.6], id: \.self) { width in
+                            RoundedRectangle(cornerRadius: 4).fill(Brand.line.opacity(0.6))
+                                .frame(height: 12)
+                                .containerRelativeFrame(.horizontal) { w, _ in (w - 32) * width }
+                        }
+                    }
+                    .accessibilityLabel("Loading description")
                 } else if let description = detail.description, !description.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("About this product")
@@ -180,7 +196,7 @@ struct ProductDetailView: View {
         #endif
         .onAppear { RecentlyViewedStore.shared.record(detail) }
         .task(id: detail.id) {
-            if auth.isSignedIn { await wishlist.refresh() }
+            if auth.isSignedIn { await wishlist.refreshIfNeeded() }
             await loadFullProduct()
         }
         .onChange(of: added) { _, value in
@@ -324,6 +340,10 @@ struct ProductDetailView: View {
                 }
             }
 
+            if detail.effectiveInStock {
+                FulfillmentOptions(price: detail.price * Double(max(quantity, 1)))
+            }
+
             if let url = StoreConfig.whatsAppURL(message: whatsAppMessage) {
                 Link(destination: url) {
                     Label(detail.effectiveInStock ? "Ask about this on WhatsApp" : "Ask when it's back on WhatsApp",
@@ -350,7 +370,7 @@ struct ProductDetailView: View {
             VStack(spacing: 8) {
                 TabView(selection: $selectedImageIndex) {
                     ForEach(Array(urls.enumerated()), id: \.offset) { index, url in
-                        CachedProductImage(url: url)
+                        CachedProductImage(url: url, size: .full)
                             .frame(height: 300)
                             .clipped()
                             .contentShape(Rectangle())
@@ -407,25 +427,70 @@ struct ProductDetailView: View {
         }
     }
 
+    /// Full record, related items and size variants load together, not one after another.
     private func loadFullProduct() async {
         isLoadingDetail = true
         defer { isLoadingDetail = false }
-        do {
-            if let full = try await SupabaseService.shared.fetchProduct(id: detail.id),
-               !StorefrontCatalog.isHidden(full)
-            {
-                detail = full
-                RecentlyViewedStore.shared.record(full)
-            }
-            if let group = detail.variantGroup, !group.isEmpty {
-                variants = (try? await SupabaseService.shared.fetchVariants(group: group)) ?? []
-            } else {
-                variants = []
-            }
-            related = (try? await SupabaseService.shared.fetchRelated(category: detail.category, excludeID: detail.id)) ?? []
-        } catch {
-            // Keep list payload; detail fields stay optional.
+        let id = detail.id
+        let category = detail.category
+        async let fullTask = try? SupabaseService.shared.fetchProduct(id: id)
+        async let relatedTask = try? SupabaseService.shared.fetchRelated(category: category, excludeID: id)
+        let listGroup = detail.variantGroup ?? ""
+        async let variantsTask = listGroup.isEmpty ? nil : try? SupabaseService.shared.fetchVariants(group: listGroup)
+
+        if let full = await fullTask, !StorefrontCatalog.isHidden(full), full.id == detail.id {
+            detail = full
+            RecentlyViewedStore.shared.record(full)
         }
+        let loadedRelated = StorefrontCatalog.visible(await relatedTask ?? [])
+        related = loadedRelated
+        ImageCache.shared.prefetch(loadedRelated.compactMap(\.primaryImageURL))
+        if let found = await variantsTask {
+            variants = StorefrontCatalog.visible(found)
+        } else if let group = detail.variantGroup, !group.isEmpty {
+            // The list payload has no variant group; the full record may.
+            variants = StorefrontCatalog.visible((try? await SupabaseService.shared.fetchVariants(group: group)) ?? [])
+        } else {
+            variants = []
+        }
+    }
+}
+
+private struct FulfillmentOptions: View {
+    let price: Double
+
+    var body: some View {
+        // Re-evaluated each minute so "Open now" flips at closing time while the page is open.
+        TimelineView(.everyMinute) { context in
+            VStack(spacing: 0) {
+                row(icon: "storefront", title: "Free pickup",
+                    detail: "\(StoreConfig.pickupStatus(at: context.date)) · Columbus")
+                Divider().padding(.leading, 40)
+                row(icon: "shippingbox", title: "Shipping",
+                    detail: price >= Double(StoreConfig.freeShippingThreshold)
+                        ? "Ships within 24 hours · free on this order"
+                        : "Ships within 24 hours · free on orders $\(StoreConfig.freeShippingThreshold)+")
+            }
+        }
+        .background(Brand.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func row(icon: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundStyle(Brand.forest)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
+                Text(detail).font(.caption).foregroundStyle(Brand.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -483,7 +548,7 @@ private struct ZoomableImage: View {
     @State private var lastOffset: CGSize = .zero
 
     var body: some View {
-        CachedProductImage(url: url, fit: true, background: .black)
+        CachedProductImage(url: url, fit: true, background: .black, size: .full)
             .scaleEffect(scale)
             .offset(offset)
             .simultaneousGesture(magnify)
