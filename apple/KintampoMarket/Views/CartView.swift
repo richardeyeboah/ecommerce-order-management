@@ -126,8 +126,7 @@ struct CartView: View {
                                 .padding(.vertical, 6)
                                 .padding(.horizontal, 16)
                             }
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
+                            .formButtonRow()
                         } header: {
                             Text("You might also need")
                         }

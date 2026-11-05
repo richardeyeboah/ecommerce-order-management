@@ -135,6 +135,11 @@ private struct ManagerDashboard: View {
             NavigationLink { AdminOrdersView() } label: {
                 QueueRow(icon: "tray.full", title: "Orders to handle", count: s.needsAction, tint: Brand.red)
             }
+            if let toShip = s.toShip {
+                NavigationLink { AdminOrdersView(initialQueue: .toShip) } label: {
+                    QueueRow(icon: "shippingbox", title: "Orders to ship", count: toShip, tint: Brand.forest)
+                }
+            }
             NavigationLink { AdminOrdersView(initialStatus: "ready_for_pickup") } label: {
                 QueueRow(icon: "storefront", title: "Waiting for pickup", count: s.readyForPickup, tint: Brand.gold)
             }

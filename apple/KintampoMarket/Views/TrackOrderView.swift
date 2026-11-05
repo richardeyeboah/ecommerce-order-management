@@ -34,8 +34,7 @@ struct TrackOrderView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(tracker.orderID.isEmpty || tracker.email.isEmpty || tracker.isLoading)
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
+                .formButtonRow()
             }
 
             if let error = tracker.errorMessage {

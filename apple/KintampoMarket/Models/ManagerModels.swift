@@ -31,6 +31,8 @@ struct ManagerSummary: Decodable, Sendable {
     let previousOrders: Int?
     let needsAction: Int
     let readyForPickup: Int
+    /// Shipping orders with no tracking yet. Nil from servers before this field existed.
+    let toShip: Int?
     let pendingReviews: Int
     let outOfStock: Int
     let lowStock: [LowStockItem]
@@ -70,6 +72,7 @@ struct ManagerSummary: Decodable, Sendable {
         case previousOrders = "previous_orders"
         case needsAction = "needs_action"
         case readyForPickup = "ready_for_pickup"
+        case toShip = "to_ship"
         case pendingReviews = "pending_reviews"
         case outOfStock = "out_of_stock"
         case lowStock = "low_stock"

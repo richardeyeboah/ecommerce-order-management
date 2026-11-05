@@ -243,6 +243,26 @@ final class MockHTTP: URLProtocol, @unchecked Sendable {
         saver.moveToCart(yam, cart: laterCart)
         check(laterCart.quantity(of: "yam-later") == 1 && saver.products.isEmpty, "Move to cart must restore one unit")
 
+        // Store manager: phone display, parcel summary, refund rules.
+        check(PhoneFormat.display("+1 614-555-0188") == "(614) 555-0188", "US phone numbers format")
+        check(PhoneFormat.display("44 20 7946 0958") == "44 20 7946 0958", "Other numbers stay as typed")
+        check(ParcelSize(weightLb: 2.5, lengthIn: 10, widthIn: 8, heightIn: 4).summary == "2.5 lb · 10×8×4 in", "Parcel summary")
+        let cardOrder = try decode("""
+        {"id":"o1","created_at":"2026-01-01","status":"shipped","total_amount":50,"payment_status":"paid","stripe_payment_intent_id":"pi_1","refund_amount":20,"shipping_label_url":"https://x/l.pdf"}
+        """, as: AdminOrder.self)
+        check(cardOrder.canRefund && cardOrder.refundableAmount == 30 && cardOrder.hasLabel, "Card order refund rules")
+        let cashOrder = try decode("""
+        {"id":"o2","created_at":"2026-01-01","status":"ordered","total_amount":22,"payment_status":"unpaid"}
+        """, as: AdminOrder.self)
+        check(cashOrder.isUnpaid && !cashOrder.canRefund && !cashOrder.hasLabel, "Cash order is settled, not refunded")
+        let localOrder = try decode("""
+        {"id":"o3","created_at":"2026-01-01","status":"processing","shipping_method":"local_delivery"}
+        """, as: AdminOrder.self)
+        let mailOrder = try decode("""
+        {"id":"o4","created_at":"2026-01-01","status":"processing","shipping_method":"standard"}
+        """, as: AdminOrder.self)
+        check(!localOrder.needsCarrierLabel && mailOrder.needsCarrierLabel, "Only carrier orders get labels")
+
         print("PASS: \(checks) mobile regression checks (mock network; no live payments)")
     }
 }

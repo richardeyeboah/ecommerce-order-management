@@ -383,8 +383,7 @@ struct BundleDetailView: View {
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(products.isEmpty || !products.contains { $0.0.effectiveInStock })
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
+                    .formButtonRow()
                 }
             }
         }
@@ -648,8 +647,7 @@ struct SignUpView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!canSubmit)
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
+                .formButtonRow()
             }
         }
         .scrollDismissesKeyboard(.interactively)

@@ -206,8 +206,7 @@ struct CheckoutView: View {
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(isSubmitting || cart.items.isEmpty)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
+                    .formButtonRow()
                     Label("Card payment, encrypted by Stripe.", systemImage: "lock.fill")
                         .font(.caption).foregroundStyle(Brand.inkMuted)
                         .listRowBackground(Color.clear)

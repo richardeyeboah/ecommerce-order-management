@@ -73,8 +73,7 @@ struct ForgotPasswordView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(sending || !email.contains("@"))
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
+                .formButtonRow()
             } footer: {
                 Text("The reset link opens on the website, then you can sign in here with the new password.")
             }
@@ -120,8 +119,7 @@ struct ChangePasswordView: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(saving || password.count < 8 || password != confirm)
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
+            .formButtonRow()
             if password != confirm, !confirm.isEmpty {
                 Text("Passwords do not match.").font(.caption).foregroundStyle(Brand.red)
             }
@@ -195,8 +193,7 @@ struct OrderDetailView: View {
                 Section {
                     Button("Buy again") { Task { await reorder() } }
                         .buttonStyle(PrimaryButtonStyle())
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
+                        .formButtonRow()
                     if let reorderNote {
                         Text(reorderNote).font(.caption).foregroundStyle(.secondary)
                     }
@@ -411,8 +408,7 @@ struct RecipeDetailView: View {
                 Section {
                     Button("Add linked ingredients to cart") { Task { await addIngredients() } }
                         .buttonStyle(PrimaryButtonStyle())
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
+                        .formButtonRow()
                 }
             }
         }

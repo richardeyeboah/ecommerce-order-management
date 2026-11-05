@@ -20,7 +20,28 @@ const intents = new Map()
 const orders = []
 // Store-manager fixture: password `fixture-admin`, plus one pickup order so the queue is never empty.
 const adminCookie = 'admin_session=fixture-admin-session'
-const staffOrders = [{ id: '44444444-4444-4444-8444-444444444444', order_number: 1001, created_at: createdAt, status: 'ordered', customer_name: 'Ama Mensah', customer_email: 'ama@example.com', customer_phone: '6145550123', total_amount: 15, shipping_method: 'pickup', pickup_contact_name: 'Ama Mensah', tracking_number: null }]
+const staffOrders = [{ id: '44444444-4444-4444-8444-444444444444', order_number: 1001, created_at: createdAt, status: 'ordered', customer_name: 'Ama Mensah', customer_email: 'ama@example.com', customer_phone: '6145550123', total_amount: 15, shipping_method: 'pickup', pickup_contact_name: 'Ama Mensah', tracking_number: null },
+  { id: '55555555-5555-4555-8555-555555555555', order_number: 1002, created_at: createdAt, status: 'processing', customer_name: 'Kofi Boateng', customer_email: 'kofi@example.com', customer_phone: '6145550188', total_amount: 64.5, shipping_method: 'standard', address_line: '200 Main St', city: 'Dayton', state: 'OH', postal_code: '45402', tracking_number: null, payment_status: 'paid', payment_method: 'stripe', stripe_payment_intent_id: 'pi_fixture', shipping_label_url: null, refund_amount: null, refunded_at: null },
+  { id: '66666666-6666-4666-8666-666666666666', order_number: 1003, created_at: createdAt, status: 'ordered', customer_name: 'Esi Owusu', customer_email: 'esi@example.com', customer_phone: '6145550190', total_amount: 22, shipping_method: 'pickup', pickup_contact_name: 'Esi Owusu', tracking_number: null, payment_status: 'unpaid', payment_method: 'cod' }]
+// Valid one-page 4x6 PDF (with an xref table) so label printing can be exercised without a carrier.
+const fixturePdf = (() => {
+  const objs = [
+    '<</Type/Catalog/Pages 2 0 R>>',
+    '<</Type/Pages/Kids[3 0 R]/Count 1>>',
+    '<</Type/Page/Parent 2 0 R/MediaBox[0 0 288 432]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>',
+    null,
+    '<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>',
+  ]
+  const text = 'BT /F1 18 Tf 36 380 Td (TEST LABEL - not postage) Tj ET'
+  objs[3] = `<</Length ${text.length}>>stream\n${text}\nendstream`
+  let out = '%PDF-1.4\n'
+  const offsets = []
+  objs.forEach((body, i) => { offsets.push(out.length); out += `${i + 1} 0 obj${body}endobj\n` })
+  const xref = out.length
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('')
+  out += `trailer<</Size ${objs.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`
+  return Buffer.from(out, 'latin1')
+})()
 const staffItems = { [staffOrders[0].id]: [{ id: 'item-1', product_id: products[0].id, product_name: 'Test Yam', product_price: 5, quantity: 3 }] }
 const statusLogs = {}
 const allOrders = () => [...orders, ...staffOrders]
@@ -89,6 +110,7 @@ http.createServer(async (req, res) => {
           previous_gross: gross / 2, previous_orders: 1,
           needs_action: list.filter(o => ['ordered', 'processing', 'ready_for_pickup'].includes(o.status)).length,
           ready_for_pickup: list.filter(o => o.status === 'ready_for_pickup').length,
+          to_ship: list.filter(o => ['ordered', 'processing'].includes(o.status) && o.shipping_method !== 'pickup' && !o.tracking_number).length,
           pending_reviews: fixtureReviews.length, out_of_stock: products.filter(p => !p.in_stock).length,
           low_stock: products.filter(p => p.in_stock && p.stock_quantity != null && p.stock_quantity <= 5)
             .map(p => ({ id: p.id, name: p.name, stock_quantity: p.stock_quantity, image_url: null })),
@@ -124,9 +146,12 @@ http.createServer(async (req, res) => {
       if (url.pathname === '/api/admin/orders') {
         const status = url.searchParams.get('status')
         const q = (url.searchParams.get('q') ?? '').toLowerCase()
-        const needsAction = !status && !q && url.searchParams.get('queue') !== 'all'
+        const queue = url.searchParams.get('queue')
+        const needsAction = !status && !q && queue !== 'all' && queue !== 'to_ship'
+        const toShip = !status && !q && queue === 'to_ship'
         const list = allOrders().filter(o =>
           (!status || o.status === status) &&
+          (!toShip || (['ordered', 'processing'].includes(o.status) && o.shipping_method !== 'pickup' && !o.tracking_number)) &&
           (!needsAction || ['ordered', 'processing', 'ready_for_pickup'].includes(o.status)) &&
           (!q || `${o.customer_name} ${o.customer_email} lq-${o.order_number}`.toLowerCase().includes(q)))
         const offset = Number(url.searchParams.get('offset') ?? 0)
@@ -138,6 +163,26 @@ http.createServer(async (req, res) => {
           ...(offset === 0 ? { counts } : {}),
           orders: list.slice(offset, offset + 50),
         })
+      }
+      const shipOrder = allOrders().find(o => url.pathname.startsWith(`/api/admin/orders/${o.id}/`))
+      if (shipOrder) {
+        const action = url.pathname.slice(`/api/admin/orders/${shipOrder.id}/`.length)
+        const log = (to, note) => (statusLogs[shipOrder.id] ??= []).push({ id: `log-${Date.now()}`, from_status: shipOrder.status, to_status: to, changed_at: new Date().toISOString(), changed_by: 'admin', note })
+        if (action === 'shipping/usps-rate') return send(200, { ok: true, parcel: body.parcel, provider: 'shippo', price: Math.round((6 + (body.parcel?.weightLb ?? 3) * 1.15) * 100) / 100, mailClass: 'usps_ground_advantage', description: 'USPS Ground Advantage' })
+        if (action === 'shipping/usps-label') {
+          shipOrder.tracking_number = '9400100000000000000000'
+          shipOrder.shipping_label_url = 'https://fixture.invalid/label.pdf'
+          log('shipped', null)
+          shipOrder.status = 'shipped'
+          return send(200, { ok: true, trackingNumber: shipOrder.tracking_number, postage: 9.45, mailClass: 'usps_ground_advantage', labelUrl: shipOrder.shipping_label_url, labelPdfBase64: fixturePdf.toString('base64'), provider: 'shippo', customerNotified: true })
+        }
+        if (action === 'shipping/label-file') {
+          res.writeHead(200, { 'Content-Type': 'application/pdf' })
+          return res.end(fixturePdf)
+        }
+        if (action === 'notify') return send(200, { ok: true, sentTo: shipOrder.customer_email })
+        if (action === 'mark-paid') { shipOrder.payment_status = 'paid'; shipOrder.payment_method = body.paymentMethod; return send(200, { ok: true }) }
+        if (action === 'refund') { shipOrder.refund_amount = body.amount; shipOrder.refunded_at = new Date().toISOString(); log(shipOrder.status, `Refunded $${body.amount}`); return send(200, { ok: true, refundId: 're_fixture' }) }
       }
       const order = allOrders().find(o => url.pathname === `/api/admin/orders/${o.id}`)
       if (!order) return send(404, { error: 'Order not found.' })

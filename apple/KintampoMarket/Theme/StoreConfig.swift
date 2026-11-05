@@ -89,3 +89,13 @@ enum StoreConfig {
         filter == fashionGroup ? fashionCategories.contains(category) : category == filter
     }
 }
+
+/// "6145550188" / "+16145550188" → "(614) 555-0188"; anything else is shown as typed.
+enum PhoneFormat {
+    static func display(_ raw: String) -> String {
+        var digits = raw.filter(\.isNumber)
+        if digits.count == 11, digits.hasPrefix("1") { digits.removeFirst() }
+        guard digits.count == 10 else { return raw }
+        return "(\(digits.prefix(3))) \(digits.dropFirst(3).prefix(3))-\(digits.suffix(4))"
+    }
+}
