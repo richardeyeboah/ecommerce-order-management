@@ -94,6 +94,48 @@ struct AdminAPI {
         _ = try await send(jsonRequest(path: "api/admin/reviews/\(id)", method: "DELETE"))
     }
 
+    // MARK: Shipping and payments
+
+    func shippingRate(orderID: String, parcel: ParcelSize) async throws -> ShippingRate {
+        var request = jsonRequest(path: "api/admin/orders/\(orderID)/shipping/usps-rate", method: "POST")
+        request.httpBody = try JSONEncoder().encode(["parcel": parcel])
+        return try JSONDecoder().decode(ShippingRate.self, from: try await send(request))
+    }
+
+    /// Buys postage. Charges the store's Shippo/USPS account; the server saves tracking and the PDF
+    /// on the order, marks it shipped and emails the customer.
+    func buyLabel(orderID: String, parcel: ParcelSize) async throws -> ShippingLabelResult {
+        var request = jsonRequest(path: "api/admin/orders/\(orderID)/shipping/usps-label", method: "POST")
+        request.timeoutInterval = 60
+        request.httpBody = try JSONEncoder().encode(["parcel": parcel])
+        return try JSONDecoder().decode(ShippingLabelResult.self, from: try await send(request))
+    }
+
+    /// The saved label PDF (for reprinting).
+    func labelPDF(orderID: String) async throws -> Data {
+        var request = URLRequest(url: baseURL.appending(path: "api/admin/orders/\(orderID)/shipping/label-file"))
+        request.setValue(baseURL.absoluteString, forHTTPHeaderField: "Origin")
+        return try await send(request)
+    }
+
+    /// Re-sends the status email for the order's current status.
+    func notifyCustomer(orderID: String) async throws {
+        _ = try await send(jsonRequest(path: "api/admin/orders/\(orderID)/notify", method: "POST"))
+    }
+
+    func markPaid(orderID: String, method: ManualPaymentMethod) async throws {
+        var request = jsonRequest(path: "api/admin/orders/\(orderID)/mark-paid", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["paymentStatus": "paid", "paymentMethod": method.rawValue])
+        _ = try await send(request)
+    }
+
+    /// Refunds through Stripe; `amount` in dollars, at most what is left on the order.
+    func refund(orderID: String, amount: Double, reason: String) async throws {
+        var request = jsonRequest(path: "api/admin/orders/\(orderID)/refund", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["amount": amount, "reason": reason])
+        _ = try await send(request)
+    }
+
     private func jsonRequest(path: String, method: String) -> URLRequest {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = method

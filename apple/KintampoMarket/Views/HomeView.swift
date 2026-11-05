@@ -12,8 +12,15 @@ struct HomeView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        ScrollView {
+        // Shelves are derived from the whole catalog; work them out once per update.
+        let staples = HomeMerchandising.staples(from: catalog.products)
+        let trending = HomeMerchandising.trending(
+            from: catalog.products, excluding: Set((staples + bestsellers).map(\.id))
+        )
+        return ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                HomeSearchBar().padding(.horizontal)
+
                 AnnouncementTicker(items: announcements) { open($0) }
 
                 WelcomeHero(inStock: catalog.products.filter(\.effectiveInStock).count)
@@ -73,12 +80,12 @@ struct HomeView: View {
                 .accessibilityLabel("Kintampo African Market")
             }
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    AppRouter.shared.requestedTab = 1
+                NavigationLink {
+                    WishlistView()
                 } label: {
-                    Image(systemName: "magnifyingglass")
+                    Image(systemName: "heart")
                 }
-                .accessibilityLabel("Search")
+                .accessibilityLabel("Saved items")
             }
         }
         .refreshable {
@@ -86,6 +93,11 @@ struct HomeView: View {
             await loadMerchandising()
         }
         .task { await loadMerchandising() }
+        // Warm the photos for the first screens of shelves as soon as the catalog arrives.
+        .task(id: catalog.products.count) {
+            let first = staples.prefix(10) + catalog.featured(limit: 12)
+            ImageCache.shared.prefetch(first.compactMap(\.primaryImageURL))
+        }
         .task(id: auth.userId) { await loadBuyAgain() }
         .navigationDestination(for: Product.self) { ProductDetailView(product: $0) }
         .navigationDestination(for: String.self) { ShopView(initialCategory: $0) }
@@ -103,18 +115,14 @@ struct HomeView: View {
         }
     }
 
-    private var staples: [Product] { HomeMerchandising.staples(from: catalog.products) }
-
-    private var trending: [Product] {
-        let shown = Set((staples + bestsellers).map(\.id))
-        return HomeMerchandising.trending(from: catalog.products, excluding: shown)
-    }
-
+    /// Announcements and bestsellers load side by side.
     private func loadMerchandising() async {
-        if let rows = try? await SupabaseService.shared.fetchAnnouncements(), !rows.isEmpty {
-            announcements = rows
-        }
-        bestsellers = StorefrontCatalog.visible(await APIClient.shared.bestsellers())
+        async let rows = try? SupabaseService.shared.fetchAnnouncements()
+        async let top = APIClient.shared.bestsellers()
+        if let rows = await rows, !rows.isEmpty { announcements = rows }
+        let best = StorefrontCatalog.visible(await top)
+        if best != bestsellers { bestsellers = best }
+        ImageCache.shared.prefetch(best.compactMap(\.primaryImageURL))
     }
 
     /// Items from the customer's last few orders, most often bought first, that are in stock now.
@@ -162,11 +170,8 @@ struct HomeView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(products) { product in
-                            NavigationLink(value: product) {
-                                ProductCard(product: product, compact: true)
+                            ProductCard(product: product, compact: true)
                                     .frame(width: typeSize.isAccessibilitySize ? 240 : 150)
-                            }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal)
@@ -230,10 +235,7 @@ struct HomeView: View {
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 280 : 150), spacing: 12)], spacing: 12) {
                     ForEach(catalog.featured(limit: 12)) { product in
-                        NavigationLink(value: product) {
-                            ProductCard(product: product)
-                        }
-                        .buttonStyle(.plain)
+                        ProductCard(product: product)
                     }
                 }
                 .padding(.horizontal)
@@ -247,11 +249,8 @@ struct HomeView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(recent.products.prefix(8)) { product in
-                        NavigationLink(value: product) {
-                            ProductCard(product: product, compact: true, showQuickAdd: false)
+                        ProductCard(product: product, compact: true, showQuickAdd: false)
                                 .frame(width: 140)
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal)
@@ -275,6 +274,35 @@ struct HomeView: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal)
+    }
+}
+
+/// Looks like a search field (the first thing shoppers reach for); opens Shop with the
+/// keyboard up, so search works the same everywhere.
+private struct HomeSearchBar: View {
+    var body: some View {
+        Button {
+            AppRouter.shared.openSearch()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").foregroundStyle(Brand.inkMuted)
+                Text("Search fufu, gari, palm oil…")
+                    .foregroundStyle(Brand.inkMuted)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .font(.body)
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background(Brand.card)
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Brand.line))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Search products")
+        .accessibilityAddTraits(.isSearchField)
+        .accessibilityIdentifier("homeSearch")
     }
 }
 

@@ -27,6 +27,8 @@ actor SupabaseService {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20
         config.waitsForConnectivity = true
+        // Without this, waitsForConnectivity holds an offline request for 7 days (the default).
+        config.timeoutIntervalForResource = 30
         config.httpMaximumConnectionsPerHost = 4
         self.session = session ?? URLSession(configuration: config)
     }
@@ -142,7 +144,7 @@ actor SupabaseService {
     }
 
     /// Browser OAuth (Google): authorize URL for the PKCE flow. The callback carries `?code=`.
-    func oauthAuthorizeURL(provider: String, redirectTo: String, codeChallenge: String) -> URL {
+    nonisolated func oauthAuthorizeURL(provider: String, redirectTo: String, codeChallenge: String) -> URL {
         var components = URLComponents(url: baseURL.appending(path: "auth/v1/authorize"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "provider", value: provider),

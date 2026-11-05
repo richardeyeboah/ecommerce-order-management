@@ -18,6 +18,10 @@ final class CartStore {
     private let defaults: UserDefaults
 
     var itemCount: Int { items.reduce(0) { $0 + $1.quantity } }
+
+    func quantity(of productID: String) -> Int {
+        items.first { $0.product.id == productID }?.quantity ?? 0
+    }
     var subtotal: Double { items.reduce(0) { $0 + $1.lineTotal } }
 
     init(defaults: UserDefaults = .standard) {
@@ -121,6 +125,64 @@ final class CartStore {
 
     private func persist() {
         guard let data = try? JSONEncoder().encode(items) else { return }
+        defaults.set(data, forKey: storageKey)
+    }
+}
+
+/// Amazon-style "Save for later": items moved out of the cart, kept on this device.
+@Observable
+@MainActor
+final class SavedForLaterStore {
+    static let shared = SavedForLaterStore()
+
+    private(set) var products: [Product] = []
+    private let storageKey = "lqam-saved-for-later"
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        if let data = defaults.data(forKey: storageKey),
+           let decoded = try? JSONDecoder().decode([Product].self, from: data) {
+            products = decoded
+        }
+    }
+
+    /// Moves a cart line here.
+    func save(_ item: CartItem, from cart: CartStore? = nil) {
+        (cart ?? .shared).remove(productID: item.product.id)
+        products.removeAll { $0.id == item.product.id }
+        products.insert(item.product, at: 0)
+        persist()
+    }
+
+    /// Back into the cart (one unit), when it is still in stock.
+    func moveToCart(_ product: Product, cart: CartStore? = nil) {
+        guard product.maxCartQuantity > 0 else { return }
+        (cart ?? .shared).add(product, quantity: 1, toast: false)
+        remove(product.id)
+    }
+
+    func remove(_ productID: String) {
+        products.removeAll { $0.id == productID }
+        persist()
+    }
+
+    /// Refreshes price and stock; drops products that were deleted or hidden.
+    func refreshFromStore() async {
+        let ids = products.map(\.id)
+        guard !ids.isEmpty,
+              let fresh = try? await SupabaseService.shared.fetchProductsByIDs(ids)
+        else { return }
+        let live = Dictionary(uniqueKeysWithValues: StorefrontCatalog.visible(fresh).map { ($0.id, $0) })
+        let checked = Set(ids)
+        let updated = products.compactMap { checked.contains($0.id) ? live[$0.id] : $0 }
+        guard updated != products else { return }
+        products = updated
+        persist()
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(products) else { return }
         defaults.set(data, forKey: storageKey)
     }
 }

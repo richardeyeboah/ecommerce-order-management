@@ -60,6 +60,15 @@ struct PrimaryButtonStyle: ButtonStyle {
     }
 }
 
+extension View {
+    /// A full-width primary button inside a Form card: inset like the rows around it, so it
+    /// never runs over the card's rounded edges.
+    func formButtonRow() -> some View {
+        listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+            .listRowSeparator(.hidden)
+    }
+}
+
 struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

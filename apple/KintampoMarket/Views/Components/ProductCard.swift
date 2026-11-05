@@ -4,8 +4,19 @@ struct ProductCard: View {
     let product: Product
     var compact = false
     var showQuickAdd = true
-    @State private var justAdded = false
+    /// Runs when the card opens the product page (Shop records the search term).
+    var onOpen: (() -> Void)?
+    @Bindable private var cart = CartStore.shared
     @Environment(\.dynamicTypeSize) private var typeSize
+
+    init(product: Product, compact: Bool = false, showQuickAdd: Bool = true, onOpen: (() -> Void)? = nil) {
+        self.product = product
+        self.compact = compact
+        self.showQuickAdd = showQuickAdd
+        self.onOpen = onOpen
+    }
+
+    private var padding: CGFloat { compact ? 8 : 10 }
 
     private var lowStock: Int? {
         guard let qty = product.stockQuantity, qty > 0, qty <= 5 else { return nil }
@@ -13,80 +24,123 @@ struct ProductCard: View {
     }
 
     private var imageHeight: CGFloat {
-        let base: CGFloat = compact ? 110 : 150
+        let base: CGFloat = compact ? 120 : 160
         return typeSize.isAccessibilitySize ? base * 1.4 : base
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ZStack(alignment: .topLeading) {
-                CachedProductImage(url: product.primaryImageURL)
-                    .frame(height: imageHeight)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    private var inCart: Int { cart.quantity(of: product.id) }
 
-                if !product.effectiveInStock {
-                    Pill(text: "Out of stock").padding(8)
-                } else if let lowStock {
-                    Pill(text: "Only \(lowStock) left", tint: Brand.gold).padding(8)
+    /// The whole card opens the product page. The quantity control's buttons are `.borderless`,
+    /// which is what lets a button inside a link handle its own taps.
+    var body: some View {
+        NavigationLink(value: product) { content }
+            .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture().onEnded { onOpen?() })
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CachedProductImage(url: product.primaryImageURL, background: Brand.card)
+                .frame(height: imageHeight)
+                .frame(maxWidth: .infinity)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    if product.effectiveInStock, showQuickAdd {
+                        CardQuantityControl(product: product, quantity: inCart).padding(6)
+                    }
                 }
-            }
+                .overlay(alignment: .topLeading) {
+                    if !product.effectiveInStock {
+                        Pill(text: "Out of stock").padding(8)
+                    } else if let lowStock {
+                        Pill(text: "Only \(lowStock) left", tint: Brand.redDark).padding(8)
+                    }
+                }
 
             VStack(alignment: .leading, spacing: 3) {
-                if let brand = product.brand?.trimmingCharacters(in: .whitespaces), !brand.isEmpty {
-                    Text(brand.uppercased())
-                        .font(.system(size: 10, weight: .medium))
-                        .tracking(0.8)
-                        .foregroundStyle(Brand.inkMuted)
-                        .lineLimit(1)
-                }
-                Text(product.name)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Brand.ink)
-                    .lineLimit(typeSize.isAccessibilitySize ? 4 : 2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minHeight: compact || typeSize.isAccessibilitySize ? 0 : 38, alignment: .top)
-                if let pack = product.packLabel, !pack.isEmpty {
-                    Text(pack).font(.caption2).foregroundStyle(Brand.inkMuted)
-                }
-            }
-
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(product.displayPrice)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(Brand.red)
+                        .font(.headline)
+                        .foregroundStyle(Brand.ink)
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                     if let unit = product.unitPriceLabel {
-                        Text(unit).font(.caption2).foregroundStyle(Brand.inkMuted)
+                        Text(unit).font(.caption2).foregroundStyle(Brand.inkMuted).lineLimit(1)
                     }
                 }
-                Spacer(minLength: 4)
-                if product.effectiveInStock, showQuickAdd {
-                    Button {
-                        CartStore.shared.add(product, quantity: 1)
-                        justAdded = true
-                        Task {
-                            try? await Task.sleep(nanoseconds: 900_000_000)
-                            justAdded = false
-                        }
-                    } label: {
-                        Image(systemName: justAdded ? "checkmark.circle.fill" : "plus.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(justAdded ? Brand.success : Brand.red)
-                            .frame(minWidth: 44, minHeight: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(justAdded ? "Added" : "Add to cart")
-                    .animation(.easeOut(duration: 0.15), value: justAdded)
+                Text(product.name)
+                    .font(.subheadline)
+                    .foregroundStyle(Brand.ink)
+                    // Two lines reserved so cards in a row or shelf line up.
+                    .lineLimit(typeSize.isAccessibilitySize ? 4 : 2, reservesSpace: !typeSize.isAccessibilitySize)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                let details = [product.packLabel, product.brand]
+                    .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                if !details.isEmpty {
+                    Text(details.joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(Brand.inkMuted)
+                        .lineLimit(1)
                 }
             }
         }
-        .brandCard(padding: compact ? 8 : 12)
+        .brandCard(padding: padding)
+        .opacity(product.effectiveInStock ? 1 : 0.7)
+    }
+}
+
+/// "+" on a product photo; once the item is in the cart it becomes "– 2 +", so customers
+/// adjust quantities from the grid without opening the product.
+private struct CardQuantityControl: View {
+    let product: Product
+    let quantity: Int
+    private let side: CGFloat = 44
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if quantity > 0 {
+                button(quantity == 1 ? "trash" : "minus", label: quantity == 1 ? "Remove from cart" : "Decrease quantity") {
+                    CartStore.shared.setQuantity(productID: product.id, quantity: quantity - 1)
+                }
+                Text("\(quantity)")
+                    .font(.subheadline.weight(.bold))
+                    .monospacedDigit()
+                    .frame(minWidth: 20)
+                    .contentTransition(.numericText())
+                    .accessibilityHidden(true)
+            }
+            button("plus", label: quantity > 0 ? "Increase quantity" : "Add to cart",
+                   disabled: quantity >= product.maxCartQuantity) {
+                if quantity == 0 {
+                    CartStore.shared.add(product, quantity: 1)
+                } else {
+                    CartStore.shared.setQuantity(productID: product.id, quantity: quantity + 1)
+                }
+            }
+        }
+        .foregroundStyle(quantity > 0 ? .white : Brand.red)
+        .background(quantity > 0 ? Brand.red : Brand.card, in: Capsule())
+        .contentShape(Capsule())
+        .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
+        .animation(.snappy(duration: 0.18), value: quantity > 0)
+        .sensoryFeedback(.selection, trigger: quantity)
+    }
+
+    private func button(_ symbol: String, label: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(quantity > 0 ? Color.white : Brand.red)
+                .frame(width: side, height: side)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .disabled(disabled)
+        .opacity(disabled ? 0.45 : 1)
+        .accessibilityLabel(label)
     }
 }
 

@@ -64,6 +64,10 @@ struct RootTabView: View {
             )
         }
         #endif
+        .onChange(of: router.searchRequest) { _, _ in
+            shopPath = NavigationPath()
+            tab = 1
+        }
         .onChange(of: router.requestedTab) { _, next in
             guard let next else { return }
             tab = next

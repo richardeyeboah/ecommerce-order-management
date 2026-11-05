@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
   const prevEndIso = range.prevEnd?.toUTC().toISO() ?? null
 
   try {
-    const [curr, prev, needsAction, readyPickup, pendingReviews, outOfStock, lowStock, recent] =
+    const [curr, prev, needsAction, readyPickup, toShip, pendingReviews, outOfStock, lowStock, recent] =
       await Promise.all([
         periodRows(startIso, endIso),
         prevStartIso && prevEndIso
@@ -75,6 +75,13 @@ export async function GET(req: NextRequest) {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('status', 'ready_for_pickup'),
+        // Same rule as `/api/admin/orders?queue=to_ship`.
+        supabaseAdmin
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .in('status', ['ordered', 'processing'])
+          .neq('shipping_method', 'pickup')
+          .or('tracking_number.is.null,tracking_number.eq.'),
         supabaseAdmin
           .from('product_reviews')
           .select('id', { count: 'exact', head: true })
@@ -115,6 +122,7 @@ export async function GET(req: NextRequest) {
       previous_orders: prevStartIso ? prevStats.ordersCount : null,
       needs_action: needsAction.count ?? 0,
       ready_for_pickup: readyPickup.count ?? 0,
+      to_ship: toShip.count ?? 0,
       pending_reviews: pendingReviews.count ?? 0,
       out_of_stock: outOfStock.count ?? 0,
       low_stock: (lowStock.data ?? []).map((p) => ({

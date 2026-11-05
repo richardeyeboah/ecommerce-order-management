@@ -198,6 +198,71 @@ final class MockHTTP: URLProtocol, @unchecked Sendable {
         let trending = HomeMerchandising.trending(from: shelf, excluding: Set(staples.map(\.id)))
         check(trending.first?.id == "c" && !trending.contains { $0.id == "a" }, "Trending leads with groceries and skips staples")
         check(trending.filter { $0.category == "Cosmetics" }.count == 1, "Trending caps cosmetics at one")
+        // Photos load straight from storage; cards ask the renderer for a resized copy first.
+        let photo = URL(string: "https://abc.supabase.co/storage/v1/object/public/product-images/a.jpg?v=7")!
+        let photoURLs = StorefrontCatalog.imageURLs(photo, width: 450)
+        check(photoURLs.count == 2 && photoURLs.last == photo, "Original photo must stay as the fallback")
+        let rendered = photoURLs.first?.absoluteString ?? ""
+        check(rendered.contains("/storage/v1/render/image/public/product-images/a.jpg")
+              && rendered.contains("v=7") && rendered.contains("width=450"), "Thumbnail must keep the photo version")
+        check(StorefrontCatalog.imageURLs(photo, width: nil) == [photo], "Full-size photo must load the original")
+        let other = URL(string: "https://kintampoafricanmarket.com/images/categories/spices.jpg")!
+        check(StorefrontCatalog.imageURLs(other, width: 450) == [other], "Non-storage photos must pass through")
+
+        // Search matches every word in any order, ignoring case and accents.
+        check(CatalogStore.tokens("  Palm, OIL ") == ["palm", "oil"], "Search must split words and commas")
+        check(CatalogStore.normalize("Crème Fraîche") == "creme fraiche", "Search must ignore accents")
+
+        // Store hours run on Columbus time: Mon–Sat 9–8, Sun 10–6.
+        func storeTime(_ text: String) -> Date {
+            let f = ISO8601DateFormatter()
+            f.timeZone = TimeZone(identifier: "America/New_York")
+            f.formatOptions = [.withFullDate, .withTime, .withColonSeparatorInTime, .withDashSeparatorInDate]
+            return f.date(from: text)!
+        }
+        check(StoreConfig.pickupStatus(at: storeTime("2026-11-04T10:30:00")) == "Open now until 8pm", "Weekday open")
+        check(StoreConfig.pickupStatus(at: storeTime("2026-11-04T07:00:00")) == "Opens today at 9am", "Before opening")
+        check(StoreConfig.pickupStatus(at: storeTime("2026-11-07T21:00:00")) == "Opens tomorrow at 10am", "Saturday night opens Sunday")
+        check(StoreConfig.pickupStatus(at: storeTime("2026-11-08T18:30:00")) == "Opens tomorrow at 9am", "Sunday after close")
+
+        // Carrier links for tracking numbers.
+        check(OrderStatusFlow.trackingURL("1Z999AA10123456784")?.host == "www.ups.com", "UPS numbers start with 1Z")
+        check(OrderStatusFlow.trackingURL("9400 1000 0000 0000 0000 00")?.host == "tools.usps.com", "USPS by default")
+        check(OrderStatusFlow.trackingURL("123456789012")?.host == "www.fedex.com", "12-digit numbers are FedEx")
+        check(OrderStatusFlow.trackingURL("  ") == nil, "Blank tracking has no link")
+
+        // Save for later moves a line out of the cart and back.
+        let laterCart = CartStore(defaults: defaults)
+        laterCart.clear()
+        let saver = SavedForLaterStore(defaults: defaults)
+        let yam = try product("yam-later", stock: 5)
+        laterCart.add(yam, quantity: 2)
+        saver.save(laterCart.items[0], from: laterCart)
+        check(laterCart.items.isEmpty && saver.products.map(\.id) == ["yam-later"], "Save for later must leave the cart")
+        check(SavedForLaterStore(defaults: defaults).products.map(\.id) == ["yam-later"], "Saved items must persist")
+        saver.moveToCart(yam, cart: laterCart)
+        check(laterCart.quantity(of: "yam-later") == 1 && saver.products.isEmpty, "Move to cart must restore one unit")
+
+        // Store manager: phone display, parcel summary, refund rules.
+        check(PhoneFormat.display("+1 614-555-0188") == "(614) 555-0188", "US phone numbers format")
+        check(PhoneFormat.display("44 20 7946 0958") == "44 20 7946 0958", "Other numbers stay as typed")
+        check(ParcelSize(weightLb: 2.5, lengthIn: 10, widthIn: 8, heightIn: 4).summary == "2.5 lb · 10×8×4 in", "Parcel summary")
+        let cardOrder = try decode("""
+        {"id":"o1","created_at":"2026-01-01","status":"shipped","total_amount":50,"payment_status":"paid","stripe_payment_intent_id":"pi_1","refund_amount":20,"shipping_label_url":"https://x/l.pdf"}
+        """, as: AdminOrder.self)
+        check(cardOrder.canRefund && cardOrder.refundableAmount == 30 && cardOrder.hasLabel, "Card order refund rules")
+        let cashOrder = try decode("""
+        {"id":"o2","created_at":"2026-01-01","status":"ordered","total_amount":22,"payment_status":"unpaid"}
+        """, as: AdminOrder.self)
+        check(cashOrder.isUnpaid && !cashOrder.canRefund && !cashOrder.hasLabel, "Cash order is settled, not refunded")
+        let localOrder = try decode("""
+        {"id":"o3","created_at":"2026-01-01","status":"processing","shipping_method":"local_delivery"}
+        """, as: AdminOrder.self)
+        let mailOrder = try decode("""
+        {"id":"o4","created_at":"2026-01-01","status":"processing","shipping_method":"standard"}
+        """, as: AdminOrder.self)
+        check(!localOrder.needsCarrierLabel && mailOrder.needsCarrierLabel, "Only carrier orders get labels")
+
         print("PASS: \(checks) mobile regression checks (mock network; no live payments)")
     }
 }

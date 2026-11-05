@@ -31,7 +31,8 @@ async function statusCounts(): Promise<Record<string, number>> {
 
 /**
  * Admin order queue for the native app. Mirrors the `/admin/orders` page filters:
- * `queue=needs_action` (default), `queue=all`, `status=<status>`, and `q=<name|email|LQ-number>`.
+ * `queue=needs_action` (default), `queue=all`, `queue=to_ship` (shipping orders that are open and
+ * have no tracking yet, oldest first), `status=<status>`, and `q=<name|email|LQ-number>`.
  * Paged by `offset` (50 per page); `has_more` says whether another page exists.
  * The first page also carries `counts` per status.
  */
@@ -44,18 +45,27 @@ export async function GET(req: NextRequest) {
   const status = rawStatus ? normalizeOrderStatus(rawStatus) : null
   // PostgREST `or()` treats , ( ) as syntax, so strip them from free-text search.
   const term = (params.get('q') ?? '').replace(/[,()%*"\\]/g, ' ').trim().slice(0, 80)
-  const queue = status || term ? 'all' : params.get('queue') === 'all' ? 'all' : 'needs_action'
+  const requested = params.get('queue')
+  const queue =
+    status || term ? 'all' : requested === 'all' || requested === 'to_ship' ? requested : 'needs_action'
   const offset = Math.min(MAX_OFFSET, Math.max(0, Number.parseInt(params.get('offset') ?? '0', 10) || 0))
 
   // One extra row tells us whether there is another page.
   let query = supabaseAdmin
     .from('orders')
     .select('*')
-    .order('created_at', { ascending: false })
+    // The ship queue is worked oldest first, like a packing line.
+    .order('created_at', { ascending: queue === 'to_ship' })
     .range(offset, offset + LIST_LIMIT)
 
   if (status) query = query.eq('status', status)
   else if (queue === 'needs_action') query = query.in('status', [...NEEDS_ACTION_STATUSES])
+  else if (queue === 'to_ship') {
+    query = query
+      .in('status', ['ordered', 'processing'])
+      .neq('shipping_method', 'pickup')
+      .or('tracking_number.is.null,tracking_number.eq.')
+  }
 
   if (term) {
     const ref = parseOrderRef(term)
