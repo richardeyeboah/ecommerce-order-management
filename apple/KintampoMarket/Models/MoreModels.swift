@@ -330,6 +330,23 @@ enum OrderStatusFlow {
     }
 }
 
+// MARK: - Passwords
+
+/// Same five checks as `lib/auth/password-strength.ts` (ASCII classes, like the server's regexes),
+/// so the app never accepts a password the website would reject.
+enum PasswordPolicy {
+    static func longEnough(_ p: String) -> Bool { p.count >= 8 }
+    static func hasLower(_ p: String) -> Bool { p.unicodeScalars.contains { ("a"..."z").contains($0) } }
+    static func hasUpper(_ p: String) -> Bool { p.unicodeScalars.contains { ("A"..."Z").contains($0) } }
+    static func hasDigit(_ p: String) -> Bool { p.unicodeScalars.contains { ("0"..."9").contains($0) } }
+    static func hasSymbol(_ p: String) -> Bool {
+        p.unicodeScalars.contains { !("a"..."z").contains($0) && !("A"..."Z").contains($0) && !("0"..."9").contains($0) }
+    }
+    static func isAcceptable(_ p: String) -> Bool {
+        longEnough(p) && hasLower(p) && hasUpper(p) && hasDigit(p) && hasSymbol(p)
+    }
+}
+
 // MARK: - Shipping labels
 
 /// Box size sent with rate and label requests (pounds and inches, like the web dashboard).

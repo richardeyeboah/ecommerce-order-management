@@ -558,13 +558,7 @@ struct SignUpView: View {
     @State private var isLoading = false
     @State private var termsAccepted = false
 
-    private var passwordStrong: Bool {
-        password.count >= 8
-            && password.contains(where: \.isUppercase)
-            && password.contains(where: \.isLowercase)
-            && password.contains(where: \.isNumber)
-            && password.contains(where: { !$0.isLetter && !$0.isNumber })
-    }
+    private var passwordStrong: Bool { PasswordPolicy.isAcceptable(password) }
     private var emailValid: Bool {
         let t = email.trimmingCharacters(in: .whitespaces)
         let parts = t.split(separator: "@")
@@ -682,14 +676,14 @@ struct SignUpView: View {
     }
 }
 
-private struct PasswordRules: View {
+struct PasswordRules: View {
     let password: String
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            rule("8+ characters", password.count >= 8)
-            rule("Upper and lower case", password.contains(where: \.isUppercase) && password.contains(where: \.isLowercase))
-            rule("A number", password.contains(where: \.isNumber))
-            rule("A symbol", password.contains(where: { !$0.isLetter && !$0.isNumber }))
+            rule("8+ characters", PasswordPolicy.longEnough(password))
+            rule("Upper and lower case", PasswordPolicy.hasUpper(password) && PasswordPolicy.hasLower(password))
+            rule("A number", PasswordPolicy.hasDigit(password))
+            rule("A symbol", PasswordPolicy.hasSymbol(password))
         }
         .font(.caption)
     }

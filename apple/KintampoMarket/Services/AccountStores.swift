@@ -105,6 +105,13 @@ final class AuthStore {
         await WishlistStore.shared.refresh()
     }
 
+    /// Deletes the account on the server, then clears everything stored on this device for it.
+    func deleteAccount() async throws {
+        guard let token = try await validAccessToken() else { throw AppError.unauthorized }
+        try await APIClient.shared.deleteAccount(accessToken: token)
+        await signOut()
+    }
+
     func updateProfile(fullName: String, phone: String) async throws {
         guard let userId else { throw AppError.unauthorized }
         try await SupabaseService.shared.updateProfile(userID: userId, fullName: fullName, phone: phone)

@@ -263,6 +263,12 @@ final class MockHTTP: URLProtocol, @unchecked Sendable {
         """, as: AdminOrder.self)
         check(!localOrder.needsCarrierLabel && mailOrder.needsCarrierLabel, "Only carrier orders get labels")
 
+        // Password rules match the website's signup check.
+        check(PasswordPolicy.isAcceptable("Kintampo#2026"), "Strong password passes")
+        check(!PasswordPolicy.isAcceptable("kintampo#2026"), "Needs an uppercase letter")
+        check(!PasswordPolicy.isAcceptable("éÉéÉéÉ1#a"), "Accented letters are not ASCII upper/lower, like the server")
+        check(!PasswordPolicy.isAcceptable("Short#1"), "Needs 8 characters")
+
         print("PASS: \(checks) mobile regression checks (mock network; no live payments)")
     }
 }

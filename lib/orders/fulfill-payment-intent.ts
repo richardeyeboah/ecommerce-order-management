@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { decrementStockForOrder } from '@/lib/orders/decrement-stock'
 import { sendOrderEmails } from '@/lib/email/send-order-emails'
 import { sendOrderSmsToMerchant } from '@/lib/notifications/send-order-sms'
 import type { SanitizedCartLine } from '@/lib/order-pricing'
@@ -220,6 +221,8 @@ export async function fulfillOrderFromPaymentIntent(
     console.error('[stripe] order_items insert failed', itemsError)
     throw new Error(itemsError.message)
   }
+
+  await decrementStockForOrder(authoritativeItems)
 
   await supabaseAdmin.from('checkout_snapshots').delete().eq('id', snapshotId)
 
