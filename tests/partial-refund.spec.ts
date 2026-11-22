@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test'
-import { computeShortfallRefund } from '../lib/orders/partial-refund'
+import {
+  computeShortfallRefund,
+  resolveRefundTaxRate,
+} from '../lib/orders/partial-refund'
 
 const RATE = 0.0775
 
@@ -17,6 +20,14 @@ function line(over: Partial<Parameters<typeof computeShortfallRefund>[0]['lines'
 }
 
 test.describe('shortfall refunds', () => {
+  test('uses the historical store rate when a migrated taxable order has a zero default rate', () => {
+    expect(resolveRefundTaxRate(0, 3.1, RATE)).toBe(RATE)
+  })
+
+  test('keeps a zero rate for orders that collected no tax', () => {
+    expect(resolveRefundTaxRate(0, 0, RATE)).toBe(0)
+  })
+
   test('no shortage refunds nothing', () => {
     const quote = computeShortfallRefund({
       lines: [line()],

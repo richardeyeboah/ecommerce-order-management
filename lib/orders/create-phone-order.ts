@@ -265,6 +265,8 @@ export async function createPhoneOrder(
       product_price: r.product_price,
       quantity: r.quantity,
       subtotal: r.subtotal,
+      product_category: r.category,
+      tax_class: r.tax_class,
     }))
   )
 

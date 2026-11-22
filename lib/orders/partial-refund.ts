@@ -69,6 +69,24 @@ function safeMoney(n: unknown): number {
   return v
 }
 
+/**
+ * Orders created before tax snapshots were introduced can have tax_amount > 0
+ * while the newly added tax_rate column contains its default zero. Preserve
+ * the tax portion of refunds by using the historical store rate in that case.
+ */
+export function resolveRefundTaxRate(
+  storedTaxRate: unknown,
+  orderTaxAmount: unknown,
+  fallbackTaxRate: number
+): number {
+  const stored = Number(storedTaxRate)
+  const chargedTax = safeMoney(orderTaxAmount)
+  if (Number.isFinite(stored) && stored >= 0 && (stored > 0 || chargedTax === 0)) {
+    return stored
+  }
+  return Number.isFinite(fallbackTaxRate) && fallbackTaxRate > 0 ? fallbackTaxRate : 0
+}
+
 export function computeShortfallRefund(input: {
   lines: ShortfallLineInput[]
   /** Combined sales tax rate that was applied at checkout. */
