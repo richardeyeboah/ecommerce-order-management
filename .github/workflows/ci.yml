@@ -21,11 +21,27 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run verify:migrations
+      - run: npm audit --omit=dev --audit-level=high
+      - run: PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test tests/order-logic.spec.ts tests/partial-refund.spec.ts tests/sales-tax.spec.ts tests/receipt-pdf.spec.ts tests/pickup-ticket-pdf.spec.ts --workers=1
+      - run: node scripts/check-env.mjs --production
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role
+          STRIPE_SECRET_KEY: sk_live_placeholder
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_live_placeholder
+          STRIPE_WEBHOOK_SECRET: whsec_placeholder
+          NEXT_PUBLIC_SITE_URL: https://placeholder.example
+          ADMIN_PASSWORD: ci-placeholder
+          ADMIN_SESSION_SECRET: ci-placeholder-secret-at-least-32-characters
+          UPSTASH_REDIS_REST_URL: https://placeholder.upstash.io
+          UPSTASH_REDIS_REST_TOKEN: placeholder-token
       - run: npm run build
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
@@ -36,4 +52,23 @@ jobs:
           STRIPE_WEBHOOK_SECRET: whsec_placeholder
           NEXT_PUBLIC_SITE_URL: https://placeholder.example
           ADMIN_PASSWORD: ci-placeholder
-          ADMIN_SESSION_SECRET: ci-placeholder-secret
+          ADMIN_SESSION_SECRET: ci-placeholder-secret-at-least-32-characters
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --workers=1
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role
+          STRIPE_SECRET_KEY: sk_test_placeholder
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
+          STRIPE_WEBHOOK_SECRET: whsec_placeholder
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3002
+          ADMIN_PASSWORD: ci-placeholder
+          ADMIN_SESSION_SECRET: ci-placeholder-secret-at-least-32-characters
+
+  native:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash apple/Tests/run.sh
+      - run: xcodebuild -project apple/KintampoMarket.xcodeproj -scheme KintampoMarket -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
