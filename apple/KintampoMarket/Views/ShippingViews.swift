@@ -104,14 +104,18 @@ struct BuyLabelView: View {
                 purchased(bought)
             } else {
                 Section {
-                    Picker("Box", selection: $preset) {
+                    HStack(spacing: 8) {
                         ForEach(Array(ParcelSize.presets.enumerated()), id: \.offset) { index, item in
-                            Text(item.name).tag(index)
+                            BoxChoice(name: item.name, size: item.size, scale: [0.7, 0.85, 1.0][min(index, 2)],
+                                      selected: preset == index) { preset = index }
                         }
-                        Text("Custom").tag(-1)
                     }
-                    .pickerStyle(.segmented)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                    .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+                    if preset == -1 {
+                        Label("Custom size", systemImage: "slider.horizontal.3")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Brand.forest)
+                    }
                     measure("Weight", value: $parcel.weightLb, unit: "lb", range: 0.5...70, step: 0.5)
                     measure("Length", value: $parcel.lengthIn, unit: "in", range: 1...108, step: 1)
                     measure("Width", value: $parcel.widthIn, unit: "in", range: 1...108, step: 1)
@@ -134,7 +138,9 @@ struct BuyLabelView: View {
                                 .accessibilityLabel("Getting price")
                         } else if let rate {
                             Text(String(format: "$%.2f", rate.price))
-                                .font(.headline).monospacedDigit()
+                                .font(.title2.weight(.bold)).monospacedDigit()
+                                .foregroundStyle(Brand.ink)
+                                .contentTransition(.numericText())
                         }
                     }
                     if let rateError {
@@ -258,6 +264,42 @@ struct BuyLabelView: View {
         } catch {
             buyError = error.localizedDescription
         }
+    }
+}
+
+/// A tappable box preset: drawn box sized to match, name, and dimensions.
+private struct BoxChoice: View {
+    let name: String
+    let size: ParcelSize
+    let scale: CGFloat
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 30 * scale))
+                    .foregroundStyle(selected ? Brand.red : Brand.inkMuted.opacity(0.55))
+                    .frame(height: 34)
+                Text(name.replacingOccurrences(of: " box", with: ""))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Brand.ink)
+                Text("\(Int(size.lengthIn))×\(Int(size.widthIn))×\(Int(size.heightIn))")
+                    .font(.caption2)
+                    .foregroundStyle(Brand.inkMuted)
+                    .monospacedDigit()
+            }
+            .frame(maxWidth: .infinity, minHeight: 96)
+            .background(selected ? Brand.red.opacity(0.06) : Brand.surface,
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(selected ? Brand.red : Brand.line, lineWidth: selected ? 2 : 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("\(name), \(size.summary)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

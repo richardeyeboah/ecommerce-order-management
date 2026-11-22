@@ -119,11 +119,14 @@ private struct ManagerDashboard: View {
         Grid(horizontalSpacing: 10, verticalSpacing: 10) {
             GridRow {
                 KPITile(title: "Sales", value: money(s.gross), change: s.grossChange, highlight: true)
-                KPITile(title: "Orders", value: "\(s.orders)", change: nil)
+                KPITile(title: "Orders", value: "\(s.orders)", change: nil,
+                        detail: s.previousOrders.map { "vs \($0) before" } ?? (s.unpaidCount > 0 ? "\(s.unpaidCount) unpaid" : "paid orders"))
             }
             GridRow {
-                KPITile(title: "Average order", value: money(s.averageOrder), change: nil)
-                KPITile(title: "Items sold", value: s.units.formatted(.number.precision(.fractionLength(0))), change: nil)
+                KPITile(title: "Average order", value: money(s.averageOrder), change: nil,
+                        detail: s.orders > 0 ? "across \(s.orders) order\(s.orders == 1 ? "" : "s")" : "no orders yet")
+                KPITile(title: "Items sold", value: s.units.formatted(.number.precision(.fractionLength(0))), change: nil,
+                        detail: s.bestSellers.first.map { "Top: \($0.name)" } ?? "units sold")
             }
         }
         .accessibilityIdentifier("managerKPIs")
@@ -215,6 +218,7 @@ private struct KPITile: View {
     let title: String
     let value: String
     let change: Double?
+    var detail: String? = nil
     var highlight = false
 
     var body: some View {
@@ -236,9 +240,15 @@ private struct KPITile: View {
                 )
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(highlight ? .white.opacity(0.85) : (change >= 0 ? Brand.success : Brand.red))
+            } else if let detail {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(highlight ? .white.opacity(0.85) : Brand.inkMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
         .padding(14)
         .background(highlight ? Brand.forest : Brand.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
