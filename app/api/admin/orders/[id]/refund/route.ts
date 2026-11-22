@@ -15,20 +15,14 @@ export async function POST(
   const auth = await requireAdminApi()
   if (!auth.ok) return auth.response
 
-  const secret = process.env.STRIPE_SECRET_KEY
-  if (!secret) {
-    return NextResponse.json({ error: 'Refunds are temporarily unavailable.' }, { status: 500 })
-  }
-  const stripe = new Stripe(secret)
-
   try {
     const { id } = await params
-    const { amount, reason, restock } = await req.json()
+    const { amount, reason, restock, restockOnly } = await req.json()
 
     const { data: order, error: fetchErr } = await supabaseAdmin
       .from('orders')
       .select(
-        'id, stripe_payment_intent_id, total_amount, refund_amount, refunded_at, payment_method, status'
+        'id, stripe_payment_intent_id, total_amount, refund_amount, refunded_at, payment_method, status, inventory_restocked_at'
       )
       .eq('id', id)
       .single()
@@ -38,10 +32,41 @@ export async function POST(
       return NextResponse.json({ error: 'Order not found.' }, { status: 404 })
     }
     if (!order) return NextResponse.json({ error: 'Order not found.' }, { status: 404 })
+
+    if (restockOnly === true) {
+      if (!order.refunded_at) {
+        return NextResponse.json(
+          { error: 'Inventory can only be restocked separately after a completed refund.' },
+          { status: 400 }
+        )
+      }
+      if (order.inventory_restocked_at) {
+        return NextResponse.json({ ok: true, restocked: true, alreadyRestocked: true })
+      }
+
+      const { error } = await supabaseAdmin.rpc('restock_order_inventory', {
+        p_order_id: id,
+      })
+      if (error) {
+        console.error('[refund] inventory-only restock failed:', error.message)
+        return NextResponse.json(
+          { error: `Refund is complete, but inventory restocking failed: ${error.message}` },
+          { status: 502 }
+        )
+      }
+      return NextResponse.json({ ok: true, restocked: true })
+    }
+
     if (order.refunded_at) return NextResponse.json({ error: 'Order already refunded.' }, { status: 400 })
     if (order.payment_method !== 'stripe' || !order.stripe_payment_intent_id) {
       return NextResponse.json({ error: 'Order has no Stripe payment to refund.' }, { status: 400 })
     }
+
+    const secret = process.env.STRIPE_SECRET_KEY
+    if (!secret) {
+      return NextResponse.json({ error: 'Refunds are temporarily unavailable.' }, { status: 500 })
+    }
+    const stripe = new Stripe(secret)
 
     const orderTotalCents = Math.round(Number(order.total_amount) * 100)
     if (!Number.isFinite(orderTotalCents) || orderTotalCents <= 0) {
@@ -106,14 +131,16 @@ export async function POST(
     }
 
     let restocked = false
+    let restockError: string | null = null
     if (isFullRefund && restock === true) {
       const { data, error } = await supabaseAdmin.rpc('restock_order_inventory', {
         p_order_id: id,
       })
       if (error) {
         console.error('[refund] restock failed:', error.message)
+        restockError = error.message
       } else {
-        restocked = data === true
+        restocked = data === true || Boolean(order.inventory_restocked_at)
       }
     }
 
@@ -125,8 +152,20 @@ export async function POST(
       from_status: fromStatus,
       to_status: toStatus,
       changed_by: 'admin',
-      note: `Refunded $${(amountCents / 100).toFixed(2)}${reason ? ` — ${reason}` : ''}`,
+      note: `Refunded $${(amountCents / 100).toFixed(2)}${reason ? ` — ${reason}` : ''}${restockError ? ` — inventory restock failed: ${restockError}` : ''}`.slice(0, 500),
     })
+
+    if (restockError) {
+      return NextResponse.json(
+        {
+          error: 'Refund issued, but inventory restocking failed. Retry inventory restocking only.',
+          refundId: refund.id,
+          refundIssued: true,
+          restockFailed: true,
+        },
+        { status: 502 }
+      )
+    }
 
     return NextResponse.json({ ok: true, refundId: refund.id, restocked })
   } catch (e) {

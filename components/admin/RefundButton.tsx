@@ -6,7 +6,15 @@ import { Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-export function RefundButton({ orderId, maxAmount }: { orderId: string; maxAmount: number }) {
+export function RefundButton({
+  orderId,
+  maxAmount,
+  restockOnly = false,
+}: {
+  orderId: string
+  maxAmount: number
+  restockOnly?: boolean
+}) {
   const router = useRouter()
   const [amount, setAmount] = useState(maxAmount.toFixed(2))
   const [reason, setReason] = useState('')
@@ -14,6 +22,7 @@ export function RefundButton({ orderId, maxAmount }: { orderId: string; maxAmoun
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
+  const [retryRestock, setRetryRestock] = useState(false)
 
   async function refund(e: React.FormEvent) {
     e.preventDefault()
@@ -29,6 +38,9 @@ export function RefundButton({ orderId, maxAmount }: { orderId: string; maxAmoun
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error ?? 'Refund failed.')
+        if (data.refundIssued === true && data.restockFailed === true) {
+          setRetryRestock(true)
+        }
         return
       }
       setDone(true)
@@ -40,11 +52,52 @@ export function RefundButton({ orderId, maxAmount }: { orderId: string; maxAmoun
     }
   }
 
+  async function retryInventoryRestock() {
+    if (!confirm(`Return order ${orderId} quantities to inventory?`)) return
+    setBusy(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restockOnly: true }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data.error ?? 'Inventory restocking failed.')
+        return
+      }
+      setDone(true)
+      router.refresh()
+    } catch {
+      setError('Network error.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const inventoryOnly = restockOnly || retryRestock
+
   if (done) {
     return (
       <p className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
-        <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden /> Refund issued.
+        <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden />{' '}
+        {inventoryOnly ? 'Inventory restocked.' : 'Refund issued.'}
       </p>
+    )
+  }
+
+  if (inventoryOnly) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-earth-600">
+          The refund is complete. This action only returns the order quantities to inventory.
+        </p>
+        {error && <p className="error">{error}</p>}
+        <Button type="button" onClick={retryInventoryRestock} disabled={busy}>
+          {busy ? 'Restocking…' : 'Retry inventory restock'}
+        </Button>
+      </div>
     )
   }
 

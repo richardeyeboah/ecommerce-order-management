@@ -18,10 +18,21 @@ const supabase = createClient(supabaseUrl, serviceKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 })
 
-const intents = await stripe.paymentIntents.list({ limit: 100 })
-const checkoutIntents = intents.data.filter(
-  (intent) => intent.status === 'succeeded' && intent.metadata?.checkout_snapshot_id
-)
+const checkoutIntents = []
+let startingAfter
+do {
+  const page = await stripe.paymentIntents.list({
+    limit: 100,
+    ...(startingAfter ? { starting_after: startingAfter } : {}),
+  })
+  checkoutIntents.push(
+    ...page.data.filter(
+      (intent) => intent.status === 'succeeded' && intent.metadata?.checkout_snapshot_id
+    )
+  )
+  if (!page.has_more || page.data.length === 0) break
+  startingAfter = page.data.at(-1).id
+} while (startingAfter)
 
 let incomplete = 0
 for (const intent of checkoutIntents) {
