@@ -37,7 +37,40 @@ struct AdminSignInView: View {
     var body: some View {
         Form {
             Section {
+                VStack(spacing: 12) {
+                    Image("LogoMark")
+                        .resizable()
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: Brand.cardShadow, radius: 6, y: 2)
+                        .accessibilityHidden(true)
+                    Text("Store manager")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(Brand.ink)
+                    Text("Orders, labels, stock, payments and reviews for Kintampo staff.")
+                        .font(.subheadline)
+                        .foregroundStyle(Brand.inkMuted)
+                        .multilineTextAlignment(.center)
+                    HStack(spacing: 14) {
+                        ForEach([("tray.full", "Orders"), ("printer", "Labels"), ("shippingbox", "Stock"), ("creditcard", "Payments")], id: \.1) { icon, label in
+                            VStack(spacing: 4) {
+                                Image(systemName: icon).font(.subheadline).foregroundStyle(Brand.forest)
+                                Text(label).font(.caption2).foregroundStyle(Brand.inkMuted)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.top, 4)
+                    .accessibilityHidden(true)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+            }
+            .listRowBackground(Color.clear)
+
+            Section {
                 SecureField("Admin password", text: $password)
+                    .textContentType(.password)
                     .accessibilityIdentifier("adminPassword")
                     .onSubmit { Task { await signIn() } }
                 Button(isLoading ? "Signing in…" : "Sign in") { Task { await signIn() } }
@@ -45,12 +78,12 @@ struct AdminSignInView: View {
                     .disabled(password.isEmpty || isLoading)
                     .formButtonRow()
                 if let errorMessage {
-                    Text(errorMessage).font(.caption).foregroundStyle(.red)
+                    Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(Brand.red)
                 }
-            } header: {
-                Text("Store staff")
             } footer: {
-                Text("Uses the same password as the web admin dashboard.")
+                Label("Same password as the web admin dashboard. You stay signed in on this phone.", systemImage: "lock.fill")
             }
         }
         .scrollContentBackground(.hidden)
@@ -247,33 +280,74 @@ private struct AdminOrderQueue: View {
 struct AdminOrderRow: View {
     let order: AdminOrder
 
+    /// "12m", "3h", "2d": how long the customer has been waiting.
+    private var age: String? {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = iso.date(from: order.createdAt) ?? {
+            iso.formatOptions = [.withInternetDateTime]
+            return iso.date(from: order.createdAt)
+        }() else { return nil }
+        let minutes = max(0, Int(Date().timeIntervalSince(date) / 60))
+        if minutes < 60 { return "\(max(1, minutes))m" }
+        if minutes < 60 * 24 { return "\(minutes / 60)h" }
+        // Past two weeks a day count stops being useful; the row shows the date instead.
+        guard minutes < 60 * 24 * 14 else { return nil }
+        return "\(minutes / (60 * 24))d"
+    }
+
+    private var isOpen: Bool { ["ordered", "processing", "ready_for_pickup"].contains(order.status) }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: order.isPickup ? "storefront.fill" : "shippingbox.fill")
+                .font(.subheadline)
+                .foregroundStyle(order.isPickup ? Brand.gold : Brand.forest)
+                .frame(width: 38, height: 38)
+                .background((order.isPickup ? Brand.gold : Brand.forest).opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .accessibilityLabel(order.isPickup ? "Pickup" : "Shipping")
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(order.displayNumber).font(.subheadline.weight(.semibold))
-                    Image(systemName: order.isPickup ? "storefront" : "shippingbox")
-                        .font(.caption)
-                        .foregroundStyle(Brand.inkMuted)
+                    Text(order.displayNumber).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
+                    if order.isUnpaid {
+                        Text("UNPAID")
+                            .font(.system(size: 9, weight: .heavy))
+                            .tracking(0.5)
+                            .foregroundStyle(Brand.gold)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Brand.gold.opacity(0.14), in: Capsule())
+                    }
                 }
                 Text(order.customerName ?? order.customerEmail ?? "Customer")
                     .font(.caption)
                     .foregroundStyle(Brand.ink)
-                Text(OrderStatusStyle.dateLabel(order.createdAt))
-                    .font(.caption2)
-                    .foregroundStyle(Brand.inkMuted)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    if isOpen, let age {
+                        Image(systemName: "clock").font(.system(size: 9, weight: .semibold))
+                        Text("waiting \(age)")
+                    } else {
+                        Text(OrderStatusStyle.dateLabel(order.createdAt))
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(Brand.inkMuted)
             }
-            Spacer()
+            Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 6) {
                 if let total = order.totalAmount {
                     Text(String(format: "$%.2f", total))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Brand.ink)
                         .monospacedDigit()
                 }
                 AdminStatusBadge(status: order.status, shippingMethod: order.shippingMethod)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -308,6 +382,7 @@ struct AdminOrderDetailView: View {
     @State private var saveMessage: String?
     @State private var confirmNotify = false
     @State private var notifyMessage: String?
+    @State private var itemImages: [String: URL] = [:]
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -329,7 +404,7 @@ struct AdminOrderDetailView: View {
                 }
             }
         }
-        .navigationTitle(detail?.order.displayNumber ?? "Order")
+        .navigationTitle("Order")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -341,81 +416,55 @@ struct AdminOrderDetailView: View {
         let order = detail.order
         Form {
             Section {
-                LabeledContent("Status") {
-                    AdminStatusBadge(status: order.status, shippingMethod: order.shippingMethod)
-                }
-                LabeledContent("Placed", value: OrderStatusStyle.dateLabel(order.createdAt))
-                LabeledContent("Fulfillment", value: fulfillmentLabel(order.shippingMethod))
-                if let payment = order.paymentStatus, !payment.isEmpty {
-                    LabeledContent("Payment", value: payment.replacingOccurrences(of: "_", with: " ").capitalized)
-                }
-                if let total = order.totalAmount {
-                    LabeledContent("Total", value: String(format: "$%.2f", total))
+                OrderSummaryCard(order: order, fulfillment: fulfillmentLabel(order.shippingMethod))
+            }
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+
+            if order.status != "cancelled" {
+                Section {
+                    OrderProgressView(status: order.status, shippingMethod: order.shippingMethod,
+                                      trackingNumber: order.trackingNumber, forStaff: true)
                 }
             }
 
-            Section("Customer") {
-                Text(order.customerName ?? "—")
-                if let email = order.customerEmail, !email.isEmpty, let url = URL(string: "mailto:\(email)") {
-                    Button(email) { openURL(url) }
-                }
-                if let phone = order.customerPhone, !phone.isEmpty,
-                   let url = URL(string: "tel:\(phone.filter { $0.isNumber || $0 == "+" })") {
-                    Button(PhoneFormat.display(phone)) { openURL(url) }
-                }
-                if order.isPickup {
-                    if let contact = order.pickupContactName, !contact.isEmpty {
-                        LabeledContent("Pickup by", value: contact)
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(order.customerName ?? "Customer").font(.headline).foregroundStyle(Brand.ink)
+                    if let email = order.customerEmail, !email.isEmpty {
+                        Text(email).font(.subheadline).foregroundStyle(Brand.inkMuted).textSelection(.enabled)
                     }
-                } else if !order.addressSummary.isEmpty {
-                    Text(order.addressSummary).font(.callout).textSelection(.enabled)
-                    HStack(spacing: 16) {
-                        Button {
-                            #if os(iOS)
-                            UIPasteboard.general.string = [order.customerName, order.addressSummary]
-                                .compactMap { $0 }.joined(separator: "\n")
-                            #endif
-                        } label: { Label("Copy", systemImage: "doc.on.doc") }
-                        if let maps = URL(string: "http://maps.apple.com/?q=\(order.addressSummary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
-                            Button { openURL(maps) } label: { Label("Maps", systemImage: "map") }
-                        }
+                    if let phone = order.customerPhone, !phone.isEmpty {
+                        Text(PhoneFormat.display(phone)).font(.subheadline).foregroundStyle(Brand.inkMuted)
                     }
-                    .buttonStyle(.borderless)
-                    .font(.subheadline)
                 }
-                if let email = order.customerEmail, !email.isEmpty {
-                    Button {
-                        confirmNotify = true
-                    } label: {
-                        Label("Email status update", systemImage: "envelope.badge")
-                    }
-                    .buttonStyle(.borderless)
-                    .confirmationDialog("Email \(email) the current status?", isPresented: $confirmNotify, titleVisibility: .visible) {
+                .padding(.vertical, 2)
+                CustomerActionBar(order: order, onEmailUpdate: { confirmNotify = true })
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                    .confirmationDialog("Email \(order.customerEmail ?? "the customer") the current status?",
+                                        isPresented: $confirmNotify, titleVisibility: .visible) {
                         Button("Send email") { Task { await notify(orderID: order.id) } }
                     } message: {
                         Text("Sends the \(OrderStatusFlow.label(order.status, shippingMethod: order.shippingMethod)) email again\(order.trackingNumber.map { ", with tracking \($0)" } ?? "").")
                     }
-                    if let notifyMessage {
-                        Text(notifyMessage).font(.caption).foregroundStyle(Brand.inkMuted)
+                if order.isPickup {
+                    if let contact = order.pickupContactName, !contact.isEmpty {
+                        LabeledContent("Picking up", value: contact)
+                    }
+                } else if !order.addressSummary.isEmpty {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "mappin.and.ellipse").foregroundStyle(Brand.forest).frame(width: 20)
+                        Text(order.addressSummary).font(.callout).textSelection(.enabled)
                     }
                 }
+                if let notifyMessage {
+                    Text(notifyMessage).font(.caption).foregroundStyle(Brand.inkMuted)
+                }
+            } header: {
+                Text("Customer")
             }
 
-
-            Section("Items") {
-                if detail.items.isEmpty {
-                    Text("No line items on this order.").foregroundStyle(Brand.inkMuted)
-                }
-                ForEach(detail.items) { item in
-                    HStack {
-                        Text("\(item.quantity)× \(item.productName)")
-                        Spacer()
-                        Text(String(format: "$%.2f", item.productPrice * Double(item.quantity)))
-                            .monospacedDigit()
-                            .foregroundStyle(Brand.inkMuted)
-                    }
-                }
-            }
+            PackListSection(items: detail.items, images: itemImages, orderID: order.id)
 
             if order.needsCarrierLabel {
                 ShippingLabelSection(order: order) { Task { await load(); onChange() } }
@@ -494,6 +543,11 @@ struct AdminOrderDetailView: View {
         do {
             let fresh = try await AdminAPI.shared.order(id: orderID)
             detail = fresh
+            let ids = Array(Set(fresh.items.compactMap(\.productId)))
+            if itemImages.isEmpty, !ids.isEmpty,
+               let products = try? await SupabaseService.shared.fetchProductsByIDs(ids) {
+                itemImages = Dictionary(uniqueKeysWithValues: products.compactMap { p in p.primaryImageURL.map { (p.id, $0) } })
+            }
             newStatus = fresh.order.status
             trackingNumber = fresh.order.trackingNumber ?? ""
             loadError = nil

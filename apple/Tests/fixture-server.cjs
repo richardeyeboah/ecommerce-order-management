@@ -42,7 +42,7 @@ const fixturePdf = (() => {
   out += `trailer<</Size ${objs.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`
   return Buffer.from(out, 'latin1')
 })()
-const staffItems = { [staffOrders[0].id]: [{ id: 'item-1', product_id: products[0].id, product_name: 'Test Yam', product_price: 5, quantity: 3 }] }
+const staffItems = { [staffOrders[1].id]: [{ id: 'item-2', product_id: products[1].id, product_name: 'Test Rice', product_price: 10, quantity: 4 }, { id: 'item-3', product_id: products[0].id, product_name: 'Test Yam', product_price: 5, quantity: 2 }], [staffOrders[0].id]: [{ id: 'item-1', product_id: products[0].id, product_name: 'Test Yam', product_price: 5, quantity: 3 }] }
 const statusLogs = {}
 const allOrders = () => [...orders, ...staffOrders]
 const isAdmin = (req) => (req.headers.cookie ?? '').split(/;\s*/).includes(adminCookie)

@@ -248,6 +248,8 @@ struct OrderProgressView: View {
     let status: String
     let shippingMethod: String?
     var trackingNumber: String?
+    /// Staff screens show the steps without the customer-facing sentence.
+    var forStaff = false
 
     private var steps: [String] {
         OrderStatusFlow.isPickup(shippingMethod) ? OrderStatusFlow.pickup : OrderStatusFlow.shipping
@@ -265,11 +267,13 @@ struct OrderProgressView: View {
                 Text(headline)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Brand.ink)
-                Text(subhead)
-                    .font(.subheadline)
-                    .foregroundStyle(Brand.inkMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 14)
+                if !forStaff {
+                    Text(subhead)
+                        .font(.subheadline)
+                        .foregroundStyle(Brand.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer().frame(height: 14)
                 ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                     stepRow(step, index: index)
                 }
