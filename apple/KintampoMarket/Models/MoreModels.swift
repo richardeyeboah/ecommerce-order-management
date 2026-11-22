@@ -89,6 +89,14 @@ struct PaymentIntentResult: Decodable, Sendable {
     var intentID: String { paymentIntentId ?? clientSecret.components(separatedBy: "_secret_")[0] }
 }
 
+struct SuggestedCheckoutAddress: Decodable, Sendable {
+    let line1: String
+    let city: String
+    let state: String
+    let country: String
+    let postalCode: String
+}
+
 struct CheckoutStatusResult: Decodable, Sendable {
     let status: String
     let orderId: String?

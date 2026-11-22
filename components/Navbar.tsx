@@ -53,7 +53,9 @@ export function Navbar({ showFashion = false }: { showFashion?: boolean }) {
   const search = searchParams.toString()
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
   const [badgeKey, setBadgeKey] = useState(totalItems)
+  const displayedTotalItems = hydrated ? totalItems : 0
 
   const navLinks = showFashion
     ? [
@@ -69,6 +71,7 @@ export function Navbar({ showFashion = false }: { showFashion?: boolean }) {
     : [...DEPARTMENT_SHORTCUTS_BASE]
 
   useEffect(() => {
+    setHydrated(true)
     const onScroll = () => setScrolled(window.scrollY > 4)
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
@@ -133,14 +136,14 @@ export function Navbar({ showFashion = false }: { showFashion?: boolean }) {
               >
                 <ShoppingBag className="h-4 w-4" aria-hidden />
                 Cart
-                {totalItems > 0 && (
-                  <span
-                    key={badgeKey}
-                    className="animate-pop flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[11px] font-semibold leading-none text-earth-900"
-                  >
-                    {totalItems > 99 ? '99+' : totalItems}
-                  </span>
-                )}
+                <span
+                  key={badgeKey}
+                  suppressHydrationWarning
+                  aria-hidden={displayedTotalItems === 0}
+                  className={`flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[11px] font-semibold leading-none text-earth-900 ${displayedTotalItems > 0 ? 'animate-pop' : 'invisible'}`}
+                >
+                  {displayedTotalItems > 99 ? '99+' : displayedTotalItems || ''}
+                </span>
               </Button>
             </nav>
 
@@ -151,18 +154,18 @@ export function Navbar({ showFashion = false }: { showFashion?: boolean }) {
                 variant="ghost"
                 size="icon"
                 className="relative h-11 w-11"
-                aria-label={`Cart, ${totalItems} items`}
+                aria-label={`Cart, ${displayedTotalItems} items`}
                 onClick={openCart}
               >
                 <ShoppingBag className="h-5 w-5" />
-                {totalItems > 0 && (
-                  <span
-                    key={badgeKey}
-                    className="animate-pop absolute right-1 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-earth-900 px-0.5 text-[10px] font-semibold leading-none text-white"
-                  >
-                    {totalItems > 99 ? '99+' : totalItems}
-                  </span>
-                )}
+                <span
+                  key={badgeKey}
+                  suppressHydrationWarning
+                  aria-hidden={displayedTotalItems === 0}
+                  className={`absolute right-1 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-earth-900 px-0.5 text-[10px] font-semibold leading-none text-white ${displayedTotalItems > 0 ? 'animate-pop' : 'invisible'}`}
+                >
+                  {displayedTotalItems > 99 ? '99+' : displayedTotalItems || ''}
+                </span>
               </Button>
               <Button
                 variant="ghost"

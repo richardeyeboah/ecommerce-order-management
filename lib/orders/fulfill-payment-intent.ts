@@ -1,12 +1,10 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { decrementStockForOrder } from '@/lib/orders/decrement-stock'
 import { sendOrderEmails } from '@/lib/email/send-order-emails'
 import { sendOrderSmsToMerchant } from '@/lib/notifications/send-order-sms'
-import type { SanitizedCartLine } from '@/lib/order-pricing'
+import type { AuthoritativeOrderItem, SanitizedCartLine } from '@/lib/order-pricing'
 import {
   computeCheckoutTotals,
   fetchCheckoutProductMap,
-  type ProductWithCategory,
 } from '@/lib/checkout-totals'
 import { normalizeShippingCountry, normalizeShippingRegion, normalizeShippingMethod } from '@/lib/shipping'
 import { getStripe } from '@/lib/stripe'
@@ -26,16 +24,6 @@ export async function fulfillOrderFromPaymentIntent(
   paymentIntentId: string
 ): Promise<{ orderId: string; created: boolean }> {
   const stripe = getStripe()
-
-  const { data: existing } = await supabaseAdmin
-    .from('orders')
-    .select('id')
-    .eq('stripe_payment_intent_id', paymentIntentId)
-    .maybeSingle()
-
-  if (existing?.id) {
-    return { orderId: existing.id, created: false }
-  }
 
   const pi = await stripe.paymentIntents.retrieve(paymentIntentId)
 
@@ -90,38 +78,85 @@ export async function fulfillOrderFromPaymentIntent(
     throw new Error('Empty cart in snapshot')
   }
 
-  const candidateProductIds = Array.from(new Set(sanitizedItems.map((i) => i.productId)))
-  const { productMap, error: productError } = await fetchCheckoutProductMap(
-    supabaseAdmin,
-    candidateProductIds
-  )
-
-  if (productError) {
-    throw new Error(productError.message)
-  }
-
-  if (productMap.size !== candidateProductIds.length) {
-    throw new Error('One or more products are no longer available')
-  }
-
   const normalizedCountry = normalizeShippingCountry(payload.country)
   const normalizedState = normalizeShippingRegion(payload.state)
 
-  const totals = computeCheckoutTotals({
-    items: sanitizedItems,
-    productMap,
-    country: normalizedCountry,
-    state: normalizedState,
-    shippingMethod: payload.shipping_method,
-    tipAmount:
-      normalizeShippingMethod(payload.shipping_method) === 'local_delivery'
-        ? Number(payload.tip_amount ?? 0)
-        : 0,
-  })
-  const { orderItems: authoritativeItems, subtotal, shipping, tax, tip } = totals
-  const shipping_method = shipping.method
+  const hasFrozenQuote =
+    Number.isFinite(payload.quoted_total) &&
+    Number.isFinite(payload.quoted_subtotal) &&
+    payload.items.every(
+      (item) =>
+        typeof item.productName === 'string' &&
+        item.productName.trim().length > 0 &&
+        Number.isFinite(item.unitPrice) &&
+        Number(item.unitPrice) >= 0
+    )
 
-  const totalCents = Math.round(totals.total * 100)
+  let authoritativeItems: AuthoritativeOrderItem[]
+  let subtotal: number
+  let shippingFee: number
+  let shippingZone: string | null
+  let taxAmount: number
+  let taxRate: number
+  let taxableSubtotal: number
+  let taxJurisdiction: string
+  let tip: number
+  let expectedTotal: number
+
+  if (hasFrozenQuote) {
+    authoritativeItems = payload.items.map((item) => ({
+      product_id: item.productId,
+      product_name: item.productName!.trim(),
+      product_price: Number(item.unitPrice),
+      quantity: item.quantity,
+      subtotal: Math.round(Number(item.unitPrice) * item.quantity * 100) / 100,
+    }))
+    subtotal = Number(payload.quoted_subtotal)
+    shippingFee = Number(payload.quoted_shipping_fee ?? 0)
+    shippingZone = payload.shipping_zone
+    taxAmount = Number(payload.quoted_tax_amount ?? 0)
+    taxRate = Number(payload.quoted_tax_rate ?? 0)
+    taxableSubtotal = Number(payload.quoted_taxable_subtotal ?? 0)
+    taxJurisdiction = payload.quoted_tax_jurisdiction ?? ''
+    tip = normalizeShippingMethod(payload.shipping_method) === 'local_delivery'
+      ? Number(payload.tip_amount ?? 0)
+      : 0
+    expectedTotal = Number(payload.quoted_total)
+  } else {
+    const candidateProductIds = Array.from(new Set(sanitizedItems.map((i) => i.productId)))
+    const { productMap, error: productError } = await fetchCheckoutProductMap(
+      supabaseAdmin,
+      candidateProductIds
+    )
+    if (productError) throw new Error(productError.message)
+    if (productMap.size !== candidateProductIds.length) {
+      throw new Error('One or more products are no longer available')
+    }
+    const totals = computeCheckoutTotals({
+      items: sanitizedItems,
+      productMap,
+      country: normalizedCountry,
+      state: normalizedState,
+      shippingMethod: payload.shipping_method,
+      tipAmount:
+        normalizeShippingMethod(payload.shipping_method) === 'local_delivery'
+          ? Number(payload.tip_amount ?? 0)
+          : 0,
+    })
+    authoritativeItems = totals.orderItems
+    subtotal = totals.subtotal
+    shippingFee = totals.shipping.fee
+    shippingZone = totals.shipping.zone
+    taxAmount = totals.tax.taxAmount
+    taxRate = totals.tax.rate
+    taxableSubtotal = totals.tax.taxableSubtotal
+    taxJurisdiction = totals.tax.jurisdictionLabel
+    tip = totals.tip
+    expectedTotal = totals.total
+  }
+  const shipping_method = normalizeShippingMethod(payload.shipping_method)
+
+  const totalCents = Math.round(expectedTotal * 100)
   const received = pi.amount_received ?? pi.amount ?? 0
   if (Math.abs(received - totalCents) > 2) {
     console.error('[stripe] PI amount mismatch', { received, totalCents, paymentIntentId })
@@ -141,10 +176,13 @@ export async function fulfillOrderFromPaymentIntent(
     country: normalizedCountry,
     postal_code: payload.postal_code?.trim() || null,
     subtotal_amount: subtotal,
-    shipping_fee: shipping.fee,
-    tax_amount: tax.taxAmount,
+    shipping_fee: shippingFee,
+    tax_amount: taxAmount,
+    tax_rate: taxRate,
+    taxable_subtotal: taxableSubtotal,
+    tax_jurisdiction: taxJurisdiction || null,
     shipping_method,
-    shipping_zone: shipping.zone,
+    shipping_zone: shippingZone,
     total_amount: totalFromStripe,
     status: 'ordered',
     ordered_at: new Date().toISOString(),
@@ -158,90 +196,40 @@ export async function fulfillOrderFromPaymentIntent(
   }
 
   const pickupContactName = payload.pickup_contact_name?.trim() || null
-
-  let { data: order, error: orderError } = await supabaseAdmin
-    .from('orders')
-    .insert({ ...baseOrderInsert, pickup_contact_name: pickupContactName })
-    .select()
-    .single()
-
-  // Retry without newer columns if the DB migration hasn't been applied yet.
-  if (
-    orderError &&
-    /column .* does not exist|could not find the .* column/i.test(orderError.message)
-  ) {
-    const legacy = { ...baseOrderInsert }
-    delete legacy.tip_amount
-    delete legacy.substitution_pref
-    delete legacy.pickup_slot
-    ;({ data: order, error: orderError } = await supabaseAdmin
-      .from('orders')
-      .insert({ ...legacy, pickup_contact_name: pickupContactName })
-      .select()
-      .single())
-    if (
-      orderError &&
-      /column .* does not exist|could not find the .* column/i.test(orderError.message)
-    ) {
-      ;({ data: order, error: orderError } = await supabaseAdmin
-        .from('orders')
-        .insert(legacy)
-        .select()
-        .single())
+  const rpcItems = authoritativeItems.map((item, index) => ({
+    ...item,
+    product_category: payload.items[index]?.category ?? null,
+    tax_class: payload.items[index]?.taxClass ?? null,
+  }))
+  const { data: fulfillmentRows, error: fulfillmentError } = await supabaseAdmin.rpc(
+    'create_paid_order_atomic',
+    {
+      p_payment_intent_id: paymentIntentId,
+      p_order: { ...baseOrderInsert, pickup_contact_name: pickupContactName },
+      p_items: rpcItems,
+      p_log_note: 'Paid via Stripe Payment Element — payment_intent.succeeded',
     }
-  }
-
-  if (orderError || !order) {
-    if (
-      orderError?.code === '23505' ||
-      /duplicate key|unique constraint/i.test(orderError?.message ?? '')
-    ) {
-      const { data: dup } = await supabaseAdmin
-        .from('orders')
-        .select('id')
-        .eq('stripe_payment_intent_id', paymentIntentId)
-        .maybeSingle()
-      if (dup?.id) return { orderId: dup.id, created: false }
-    }
-    throw new Error(orderError?.message ?? 'Order insert failed')
-  }
-
-  const { error: itemsError } = await supabaseAdmin.from('order_items').insert(
-    authoritativeItems.map((item) => ({
-      order_id: order.id,
-      product_id: item.product_id,
-      product_name: item.product_name,
-      product_price: item.product_price,
-      quantity: item.quantity,
-      subtotal: item.subtotal,
-    }))
   )
-
-  if (itemsError) {
-    console.error('[stripe] order_items insert failed', itemsError)
-    throw new Error(itemsError.message)
+  if (fulfillmentError) {
+    throw new Error(
+      `${fulfillmentError.message}. Apply supabase/migrations/20261122220000_commerce_reliability.sql.`
+    )
   }
 
-  await decrementStockForOrder(authoritativeItems)
+  const fulfillment = Array.isArray(fulfillmentRows) ? fulfillmentRows[0] : fulfillmentRows
+  const orderId = fulfillment?.order_id as string | undefined
+  const created = fulfillment?.created === true
+  if (!orderId) throw new Error('Atomic fulfillment did not return an order id')
+
+  const { data: order, error: orderError } = await supabaseAdmin
+    .from('orders')
+    .select('*')
+    .eq('id', orderId)
+    .single()
+  if (orderError || !order) throw new Error(orderError?.message ?? 'Fulfilled order not found')
 
   await supabaseAdmin.from('checkout_snapshots').delete().eq('id', snapshotId)
-
-  const { error: logError } = await supabaseAdmin.from('order_status_logs').insert({
-    order_id: order.id,
-    from_status: null,
-    to_status: 'ordered',
-    changed_by: 'stripe_webhook',
-    note: 'Paid via Stripe Payment Element — payment_intent.succeeded',
-  })
-
-  if (
-    logError &&
-    !/relation .* does not exist|could not find the table|column .* does not exist|could not find the .* column/i.test(
-      logError.message
-    )
-  ) {
-    console.error('[stripe] order_status_logs insert warning:', logError)
-  }
+  if (!created) return { orderId, created: false }
 
   try {
     await sendOrderEmails(
@@ -258,7 +246,7 @@ export async function fulfillOrderFromPaymentIntent(
         postal_code: order.postal_code,
         subtotal_amount: Number(order.subtotal_amount),
         shipping_fee: Number(order.shipping_fee),
-        tax_amount: Number((order as { tax_amount?: number }).tax_amount ?? tax.taxAmount),
+        tax_amount: Number((order as { tax_amount?: number }).tax_amount ?? taxAmount),
         total_amount: Number(order.total_amount),
         shipping_method: order.shipping_method,
         payment_method: order.payment_method,

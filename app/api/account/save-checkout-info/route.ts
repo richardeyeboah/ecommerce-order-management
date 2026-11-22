@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { assertSameOrigin } from '@/lib/security/same-origin'
+import { getSupabasePublicConfig } from '@/lib/supabase/config'
 
 export const runtime = 'nodejs'
 
@@ -19,10 +21,26 @@ export async function POST(req: NextRequest) {
   const originCheck = assertSameOrigin(req)
   if (!originCheck.ok) return originCheck.response
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const authHeader = req.headers.get('authorization') ?? ''
+  const bearer = authHeader.toLowerCase().startsWith('bearer ')
+    ? authHeader.slice(7).trim()
+    : ''
+  let user: { id: string; email?: string | null } | null = null
+  if (bearer) {
+    const { url, anonKey, configured } = getSupabasePublicConfig()
+    if (configured && url && anonKey) {
+      const client = createSupabaseClient(url, anonKey, {
+        global: { headers: { Authorization: `Bearer ${bearer}` } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+      const { data } = await client.auth.getUser(bearer)
+      user = data.user
+    }
+  } else {
+    const supabase = await createClient()
+    const result = await supabase.auth.getUser()
+    user = result.data.user
+  }
   if (!user) {
     return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
   }

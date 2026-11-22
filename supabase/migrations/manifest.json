@@ -1,0 +1,8 @@
+{
+  "migrations": [
+    {
+      "version": "20261122220000_commerce_reliability",
+      "file": "20261122220000_commerce_reliability.sql"
+    }
+  ]
+}

@@ -12,15 +12,21 @@ import {
   type ShippingMethod,
   type ShippingQuote,
 } from '@/lib/shipping'
-import { calculateSalesTax, type SalesTaxQuote, type TaxLineInput } from '@/lib/tax/sales-tax'
+import {
+  calculateSalesTax,
+  type ProductTaxClass,
+  type SalesTaxQuote,
+  type TaxLineInput,
+} from '@/lib/tax/sales-tax'
 
 export type ProductWithCategory = AuthoritativeProduct & {
   category: string
+  tax_class?: ProductTaxClass | null
   stock_quantity?: number | null
 }
 
-export const CHECKOUT_PRODUCT_SELECT = 'id,name,price,in_stock,category,stock_quantity'
-export const CHECKOUT_PRODUCT_SELECT_LEGACY = 'id,name,price,in_stock,category'
+export const CHECKOUT_PRODUCT_SELECT = 'id,name,price,in_stock,category,tax_class,stock_quantity'
+export const CHECKOUT_PRODUCT_SELECT_LEGACY = 'id,name,price,in_stock,category,stock_quantity'
 
 /** Normalize Supabase product rows for checkout (legacy DBs may omit stock_quantity). */
 export function toProductWithCategory(row: {
@@ -29,6 +35,7 @@ export function toProductWithCategory(row: {
   price: number
   in_stock: boolean
   category: string
+  tax_class?: ProductTaxClass | null
   stock_quantity?: number | null
 }): ProductWithCategory {
   return {
@@ -37,6 +44,7 @@ export function toProductWithCategory(row: {
     price: row.price,
     in_stock: row.in_stock,
     category: row.category,
+    tax_class: row.tax_class ?? null,
     stock_quantity:
       typeof row.stock_quantity === 'number' && Number.isFinite(row.stock_quantity)
         ? row.stock_quantity
@@ -60,6 +68,7 @@ export async function fetchCheckoutProductMap(
       price: number
       in_stock: boolean
       category: string
+      tax_class?: ProductTaxClass | null
       stock_quantity?: number | null
     }>
     return {
@@ -68,7 +77,7 @@ export async function fetchCheckoutProductMap(
     }
   }
 
-  if (!/stock_quantity|column/i.test(primary.error.message)) {
+  if (!/tax_class|stock_quantity|column/i.test(primary.error.message)) {
     return { productMap: new Map(), error: primary.error }
   }
 
@@ -87,6 +96,7 @@ export async function fetchCheckoutProductMap(
     price: number
     in_stock: boolean
     category: string
+    stock_quantity?: number | null
   }>
 
   return {
@@ -126,6 +136,7 @@ export function computeCheckoutTotals(input: {
 
   const taxLines: TaxLineInput[] = orderItems.map((item) => ({
     category: input.productMap.get(item.product_id)?.category ?? '',
+    taxClass: input.productMap.get(item.product_id)?.tax_class ?? null,
     lineSubtotal: item.subtotal,
   }))
 

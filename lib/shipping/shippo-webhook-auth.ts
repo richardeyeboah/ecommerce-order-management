@@ -8,6 +8,7 @@ import { createHash, timingSafeEqual } from 'crypto'
 export function getShippoWebhookToken(): string | null {
   const explicit = process.env.SHIPPO_WEBHOOK_SECRET?.trim()
   if (explicit) return explicit
+  if (process.env.NODE_ENV === 'production') return null
   const api = process.env.SHIPPO_API_TOKEN?.trim()
   if (!api) return null
   return createHash('sha256').update(`shippo-webhook:${api}`).digest('hex').slice(0, 32)

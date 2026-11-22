@@ -91,6 +91,16 @@ const checks = [
         required: isProd,
       },
       {
+        key: 'Upstash distributed admin rate limit',
+        ok: set('UPSTASH_REDIS_REST_URL') && set('UPSTASH_REDIS_REST_TOKEN'),
+        required: isProd,
+      },
+      {
+        key: 'SHIPPO_WEBHOOK_SECRET (when Shippo is enabled)',
+        ok: !set('SHIPPO_API_TOKEN') || set('SHIPPO_WEBHOOK_SECRET'),
+        required: isProd && set('SHIPPO_API_TOKEN'),
+      },
+      {
         key: 'GOOGLE_SITE_VERIFICATION (Search Console HTML tag)',
         ok: set('GOOGLE_SITE_VERIFICATION'),
         required: false,

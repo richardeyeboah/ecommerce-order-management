@@ -106,10 +106,16 @@ export async function POST(
           orderedQuantity: ordered,
           previousFulfilledQuantity: previousFulfilled,
           nextFulfilledQuantity: requestedByItem.get(item.id) ?? previousFulfilled,
-          category:
-            typeof item.product_id === 'string'
-              ? (categoryByProduct.get(item.product_id) ?? '')
-              : '',
+          category: String(
+            (item as Record<string, unknown>).product_category ??
+              (typeof item.product_id === 'string'
+                ? (categoryByProduct.get(item.product_id) ?? '')
+                : '')
+          ),
+          taxClass:
+            typeof (item as Record<string, unknown>).tax_class === 'string'
+              ? String((item as Record<string, unknown>).tax_class)
+              : null,
         }
       })
 
@@ -123,7 +129,9 @@ export async function POST(
 
     const quote = computeShortfallRefund({
       lines,
-      taxRate: getStoreSalesTaxRate(),
+      taxRate: Number.isFinite(Number(orderRecord.tax_rate))
+        ? Number(orderRecord.tax_rate)
+        : getStoreSalesTaxRate(),
       orderTaxAmount: Number(orderRecord.tax_amount ?? 0),
       maxRefundable,
     })

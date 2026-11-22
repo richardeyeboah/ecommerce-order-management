@@ -27,13 +27,13 @@ test.describe('Ohio category sales tax', () => {
     expect(isCategoryTaxable('Hair & Braiding')).toBe(true)
   })
 
-  test('tax applies for all US states on taxable items (Ohio store rate)', () => {
+  test('tax applies only to Ohio destinations and store pickup', () => {
     expect(shouldApplyStoreSalesTax({ country: 'US', state: 'Ohio' })).toBe(true)
     expect(shouldApplyStoreSalesTax({ country: 'US', state: 'OH' })).toBe(true)
-    expect(shouldApplyStoreSalesTax({ country: 'US', state: '' })).toBe(true)
+    expect(shouldApplyStoreSalesTax({ country: 'US', state: '' })).toBe(false)
     expect(shouldApplyStoreSalesTax({ shippingMethod: 'pickup' })).toBe(true)
-    expect(shouldApplyStoreSalesTax({ country: 'US', state: 'Texas' })).toBe(true)
-    expect(shouldApplyStoreSalesTax({ country: 'US', state: 'Michigan' })).toBe(true)
+    expect(shouldApplyStoreSalesTax({ country: 'US', state: 'Texas' })).toBe(false)
+    expect(shouldApplyStoreSalesTax({ country: 'US', state: 'Michigan' })).toBe(false)
   })
 
   test('mixed cart taxes only taxable lines in Ohio', () => {
@@ -50,24 +50,29 @@ test.describe('Ohio category sales tax', () => {
     expect(quote.taxAmount).toBe(0.78)
   })
 
-  test('out of state US still taxes non-food at store rate', () => {
+  test('out of state US does not collect until nexus is configured', () => {
     const quote = calculateSalesTax(
       [{ category: 'Non food', lineSubtotal: 15 }],
       { country: 'US', state: 'Michigan' }
     )
-    expect(quote.applies).toBe(true)
-    expect(quote.taxAmount).toBe(1.16)
+    expect(quote.applies).toBe(false)
+    expect(quote.taxAmount).toBe(0)
   })
 
-  test('Texas and California same tax as Ohio on cosmetics', () => {
+  test('out-of-state taxable merchandise remains untaxed', () => {
     for (const state of ['Texas', 'California', 'New York']) {
       const quote = calculateSalesTax(
         [{ category: 'Cosmetics', lineSubtotal: 100 }],
         { country: 'United States', state }
       )
-      expect(quote.applies, state).toBe(true)
-      expect(quote.taxAmount, state).toBe(7.75)
+      expect(quote.applies, state).toBe(false)
+      expect(quote.taxAmount, state).toBe(0)
     }
+  })
+
+  test('explicit tax class overrides category fallback', () => {
+    expect(isCategoryTaxable('Cosmetics', 'grocery_exempt')).toBe(false)
+    expect(isCategoryTaxable('Beverages', 'taxable_general')).toBe(true)
   })
 
   test('non-US orders have no sales tax on site', () => {

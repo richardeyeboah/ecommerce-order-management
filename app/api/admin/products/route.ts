@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
         unit_of_measure: row.unit_of_measure,
         stock_quantity: row.stock_quantity,
         variant_group: row.variant_group,
+        tax_class: row.tax_class,
       })
       .select()
       .single()
@@ -88,7 +89,8 @@ export async function POST(req: NextRequest) {
           row.unit_amount != null ||
           Boolean(row.unit_of_measure) ||
           row.stock_quantity != null ||
-          Boolean(row.variant_group)
+          Boolean(row.variant_group) ||
+          Boolean(row.tax_class)
         if (wouldDrop) {
           return NextResponse.json(
             {

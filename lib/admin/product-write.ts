@@ -14,6 +14,7 @@ export const PRODUCT_VARIANT_GROUP_MAX = 80
 export const PRODUCT_UNIT_MEASURE_MAX = 16
 
 const UNIT_MEASURES = new Set(['lb', 'oz', 'kg', 'g', 'ct', 'ml', 'l', 'yd', 'm', 'pc'])
+const TAX_CLASSES = new Set(['grocery_exempt', 'taxable_general', 'alcohol'])
 
 export type AdminProductWrite = {
   name: string
@@ -29,6 +30,7 @@ export type AdminProductWrite = {
   unit_of_measure: string | null
   stock_quantity: number | null
   variant_group: string | null
+  tax_class: 'grocery_exempt' | 'taxable_general' | 'alcohol' | null
 }
 
 export type ParseProductBodyResult =
@@ -177,6 +179,14 @@ export function parseAdminProductBody(
     data.variant_group = vg
   }
 
+  if (has('tax_class') || mode === 'create') {
+    const taxClass = asTrimmedString(raw.tax_class)
+    if (taxClass && !TAX_CLASSES.has(taxClass)) {
+      return { ok: false, error: 'Unsupported product tax class.', status: 400 }
+    }
+    data.tax_class = taxClass as AdminProductWrite['tax_class']
+  }
+
   if (mode === 'create') {
     if (!data.name || !data.category || data.price == null) {
       return { ok: false, error: 'Name, category, and price are required.', status: 400 }
@@ -198,6 +208,7 @@ export function parseAdminProductBody(
         unit_of_measure: data.unit_of_measure ?? null,
         stock_quantity: data.stock_quantity ?? null,
         variant_group: data.variant_group ?? null,
+        tax_class: data.tax_class ?? null,
       },
     }
   }

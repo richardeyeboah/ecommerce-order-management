@@ -12,7 +12,7 @@
  * short an item, put one back, and short it again without ever double-refunding.
  */
 
-import { isCategoryTaxable } from '@/lib/tax/sales-tax'
+import { isCategoryTaxable, type ProductTaxClass } from '@/lib/tax/sales-tax'
 
 export type ShortfallLineInput = {
   itemId: string
@@ -25,6 +25,8 @@ export type ShortfallLineInput = {
   nextFulfilledQuantity: number
   /** Product category, used to decide whether the line carried sales tax. */
   category?: string | null
+  /** Immutable tax classification captured when the order was placed. */
+  taxClass?: ProductTaxClass | string | null
 }
 
 export type ShortfallLineResult = {
@@ -90,7 +92,7 @@ export function computeShortfallRefund(input: {
     const unitPrice = safeMoney(raw.unitPrice)
     const previous = Math.min(safeQty(raw.previousFulfilledQuantity, ordered), ordered)
     const next = Math.min(safeQty(raw.nextFulfilledQuantity), ordered)
-    const taxable = isCategoryTaxable(raw.category ?? '')
+    const taxable = isCategoryTaxable(raw.category ?? '', raw.taxClass)
 
     // Positive when this adjustment removes units; negative when staff put
     // units back. Both directions net out correctly across adjustments.

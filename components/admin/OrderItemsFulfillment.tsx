@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, Minus, Plus, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -94,16 +94,14 @@ export function OrderItemsFulfillment({
   }, [draft, items, orderId])
 
   // Debounced so holding the stepper does not fire a request per click.
-  const quoteRef = useRef(requestQuote)
-  quoteRef.current = requestQuote
   useEffect(() => {
     if (!dirty) {
       setQuote(null)
       return
     }
-    const t = window.setTimeout(() => void quoteRef.current(), 350)
+    const t = window.setTimeout(() => void requestQuote(), 350)
     return () => window.clearTimeout(t)
-  }, [draft, dirty])
+  }, [dirty, requestQuote])
 
   function setQty(itemId: string, value: number, max: number) {
     const next = Math.max(0, Math.min(max, Math.trunc(Number.isFinite(value) ? value : 0)))

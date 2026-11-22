@@ -33,9 +33,7 @@ E-Commerce & Order Management System is a full-stack checkout and order manageme
 
 ## Reliability and payment controls
 
-Prices and totals are calculated on the server before a Stripe Checkout Session is created. Checkout snapshots preserve the purchased item data, and unique Stripe session and payment identifiers prevent the same payment from being recorded twice. Webhooks update payment and fulfillment records after Stripe confirms an event.
-
-These controls do not establish atomic fulfillment across multiple database writes or guarantee exactly-once behavior after partial failures. Those require separate transaction and recovery verification.
+Prices and totals are calculated on the server before a Stripe PaymentIntent is created. Checkout snapshots preserve the exact priced lines and tax quote, and a unique Stripe PaymentIntent identifier prevents the same payment from being recorded twice. The commerce reliability migration creates the order, line items, inventory update, and initial status log in one database transaction; retries repair an older empty order safely.
 
 Rate limits use Upstash Redis when configured. Sensitive staff and payment operations run on protected server routes, and secrets stay in local or hosting environment variables.
 

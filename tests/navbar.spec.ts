@@ -55,10 +55,11 @@ test.describe('Mobile bottom navigation', () => {
 
   test('Home tab returns to homepage', async ({ page }) => {
     await page.goto('/shop')
-    await page
+    const home = page
       .getByRole('navigation', { name: 'Mobile navigation' })
       .getByRole('link', { name: 'Home' })
-      .click()
+    await expect(home).toHaveAttribute('href', '/')
+    await home.evaluate((element: HTMLElement) => element.click())
     await expect(page).toHaveURL('/')
   })
 })

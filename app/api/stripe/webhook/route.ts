@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { getStripe } from '@/lib/stripe'
 import { fulfillOrderFromPaymentIntent } from '@/lib/orders/fulfill-payment-intent'
-import { fulfillOrderFromStripeSession } from '@/lib/orders/fulfill-stripe-checkout'
 
 export const runtime = 'nodejs'
 
@@ -26,16 +25,6 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('[stripe] webhook signature failed', err)
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
-  }
-
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as Stripe.Checkout.Session
-    try {
-      await fulfillOrderFromStripeSession(session.id)
-    } catch (e) {
-      console.error('[stripe] fulfillment failed', e)
-      return NextResponse.json({ error: 'Fulfillment failed' }, { status: 500 })
-    }
   }
 
   if (event.type === 'payment_intent.succeeded') {

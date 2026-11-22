@@ -14,12 +14,16 @@ export const ADMIN_COOKIE_NAME = 'admin_session'
 export const ADMIN_SESSION_TTL_SECONDS = 60 * 60 * 8 // 8 hours
 
 function getSecret(): string {
-  // Prefer a dedicated secret; fall back to ADMIN_PASSWORD only so existing deployments keep working.
-  // Operators should set ADMIN_SESSION_SECRET to a long random string in production.
-  const secret =
-    process.env.ADMIN_SESSION_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim() || ''
+  const dedicated = process.env.ADMIN_SESSION_SECRET?.trim() || ''
+  if (process.env.NODE_ENV === 'production') {
+    if (dedicated.length < 32) {
+      throw new Error('ADMIN_SESSION_SECRET must be set to at least 32 characters in production.')
+    }
+    return dedicated
+  }
+  const secret = dedicated || process.env.ADMIN_PASSWORD?.trim() || ''
   if (!secret) {
-    throw new Error('ADMIN_SESSION_SECRET (or ADMIN_PASSWORD) is required to sign admin sessions.')
+    throw new Error('ADMIN_SESSION_SECRET (or ADMIN_PASSWORD in development) is required.')
   }
   return secret
 }

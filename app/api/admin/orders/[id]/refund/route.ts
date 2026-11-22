@@ -23,7 +23,7 @@ export async function POST(
 
   try {
     const { id } = await params
-    const { amount, reason } = await req.json()
+    const { amount, reason, restock } = await req.json()
 
     const { data: order, error: fetchErr } = await supabaseAdmin
       .from('orders')
@@ -67,16 +67,21 @@ export async function POST(
       )
     }
 
-    const refund = await stripe.refunds.create({
-      payment_intent: order.stripe_payment_intent_id,
-      amount: amountCents,
-      reason: 'requested_by_customer',
-    })
+    const refund = await stripe.refunds.create(
+      {
+        payment_intent: order.stripe_payment_intent_id,
+        amount: amountCents,
+        reason: 'requested_by_customer',
+      },
+      {
+        idempotencyKey: `order-refund:${id}:${alreadyRefundedCents}:${amountCents}`,
+      }
+    )
 
     const isFullRefund = amountCents >= remainingCents
     const newRefundTotal = (alreadyRefundedCents + amountCents) / 100
 
-    await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from('orders')
       .update({
         refunded_at: isFullRefund ? new Date().toISOString() : order.refunded_at,
@@ -84,6 +89,33 @@ export async function POST(
         refund_stripe_id: refund.id,
       })
       .eq('id', id)
+    if (updateError) {
+      console.error('[refund] Stripe succeeded but order update failed:', {
+        orderId: id,
+        refundId: refund.id,
+        error: updateError.message,
+      })
+      return NextResponse.json(
+        {
+          error:
+            'Stripe issued the refund, but the order record needs reconciliation. Do not refund again.',
+          refundId: refund.id,
+        },
+        { status: 502 }
+      )
+    }
+
+    let restocked = false
+    if (isFullRefund && restock === true) {
+      const { data, error } = await supabaseAdmin.rpc('restock_order_inventory', {
+        p_order_id: id,
+      })
+      if (error) {
+        console.error('[refund] restock failed:', error.message)
+      } else {
+        restocked = data === true
+      }
+    }
 
     const fromStatus = normalizeOrderStatus(order.status)
     const toStatus = isFullRefund ? 'cancelled' : fromStatus
@@ -96,7 +128,7 @@ export async function POST(
       note: `Refunded $${(amountCents / 100).toFixed(2)}${reason ? ` — ${reason}` : ''}`,
     })
 
-    return NextResponse.json({ ok: true, refundId: refund.id })
+    return NextResponse.json({ ok: true, refundId: refund.id, restocked })
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Refund failed.'
     return NextResponse.json({ error: message }, { status: 500 })

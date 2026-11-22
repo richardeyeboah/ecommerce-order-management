@@ -16,6 +16,7 @@ export type Product = {
   unit_of_measure?: string | null
   pack_label?: string | null
   variant_group?: string | null
+  tax_class?: 'grocery_exempt' | 'taxable_general' | 'alcohol' | null
 }
 
 export type CartItem = {

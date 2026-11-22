@@ -79,6 +79,16 @@ export async function GET(req: NextRequest) {
       }
 
       if (order?.id) {
+        const { count, error: itemsError } = await supabaseAdmin
+          .from('order_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('order_id', order.id)
+        if (itemsError || !count) {
+          return NextResponse.json({
+            status: 'processing',
+            message: 'Payment received — finalizing your order…',
+          })
+        }
         return NextResponse.json({
           status: 'complete',
           orderId: order.id,

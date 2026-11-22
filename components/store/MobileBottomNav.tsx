@@ -75,14 +75,17 @@ export function MobileBottomNav() {
                 >
                   <span className="relative flex h-6 w-6 items-center justify-center">
                     <Icon className={cn('h-[22px] w-[22px]', active && 'stroke-[2.25]')} aria-hidden />
-                    {totalItems > 0 && (
-                      <span
-                        key={totalItems}
-                        className="animate-pop absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-700 px-0.5 text-[10px] font-semibold leading-none text-white"
-                      >
-                        {totalItems > 99 ? '99+' : totalItems}
-                      </span>
-                    )}
+                    <span
+                      key={totalItems}
+                      suppressHydrationWarning
+                      aria-hidden={totalItems === 0}
+                      className={cn(
+                        'absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-700 px-0.5 text-[10px] font-semibold leading-none text-white',
+                        totalItems > 0 ? 'animate-pop' : 'invisible'
+                      )}
+                    >
+                      {totalItems > 99 ? '99+' : totalItems || ''}
+                    </span>
                   </span>
                   <span className={cn('text-[11px] font-medium leading-none tracking-tight', active && 'font-semibold')}>
                     {label}

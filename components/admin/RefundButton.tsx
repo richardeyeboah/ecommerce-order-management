@@ -10,6 +10,7 @@ export function RefundButton({ orderId, maxAmount }: { orderId: string; maxAmoun
   const router = useRouter()
   const [amount, setAmount] = useState(maxAmount.toFixed(2))
   const [reason, setReason] = useState('')
+  const [restock, setRestock] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
@@ -23,7 +24,7 @@ export function RefundButton({ orderId, maxAmount }: { orderId: string; maxAmoun
       const res = await fetch(`/api/admin/orders/${orderId}/refund`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: parseFloat(amount), reason }),
+        body: JSON.stringify({ amount: parseFloat(amount), reason, restock }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -77,6 +78,17 @@ export function RefundButton({ orderId, maxAmount }: { orderId: string; maxAmoun
           />
         </div>
       </div>
+
+      <label className="flex min-h-11 items-center gap-3 text-sm text-earth-700">
+        <input
+          type="checkbox"
+          checked={restock}
+          onChange={(e) => setRestock(e.target.checked)}
+          disabled={Math.round(Number(amount) * 100) !== Math.round(maxAmount * 100)}
+          className="h-5 w-5 rounded border-earth-300"
+        />
+        Return all tracked quantities to inventory (full refund only)
+      </label>
 
       {error && <p className="error">{error}</p>}
 

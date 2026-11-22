@@ -8,19 +8,21 @@ test.describe('Cart', () => {
     await page.goto('/cart')
 
     await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Browse the Store' })).toHaveAttribute('href', '/shop')
+    await expect(page.getByRole('link', { name: 'Start shopping' })).toHaveAttribute('href', '/shop')
   })
 
   test('shows line item and total after cart is seeded', async ({ page }) => {
     await seedCartFromFirstShopProduct(page)
 
-    await expect(page.getByRole('heading', { name: 'Your Cart', exact: true })).toBeVisible()
-    await expect(page.getByText('Order Summary', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /Cart \(1\)/ })).toBeVisible()
+    await expect(page.getByText('Order summary', { exact: true })).toBeVisible()
 
     const totalRow = page.getByText(/^Total$/).locator('..').locator('span').last()
     await expect(totalRow).toContainText('$')
 
-    await expect(page.getByRole('link', { name: /Proceed to Checkout/i })).toBeVisible()
+    await expect(
+      page.getByRole('main').getByRole('link', { name: 'Checkout', exact: true })
+    ).toBeVisible()
   })
 
   test('increases quantity with + control', async ({ page }) => {

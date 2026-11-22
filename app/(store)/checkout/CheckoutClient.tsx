@@ -194,6 +194,13 @@ export function CheckoutClient({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [clientSecret, setClientSecret] = useState<string | null>(null)
+  const [serverQuote, setServerQuote] = useState<{
+    subtotal: number
+    shippingFee: number
+    taxAmount: number
+    taxApplies: boolean
+    total: number
+  } | null>(null)
   const [returnUrl, setReturnUrl] = useState('')
   const [categoryByProductId, setCategoryByProductId] = useState<Record<string, string>>({})
   const [addressVerified, setAddressVerified] = useState(false)
@@ -488,6 +495,7 @@ export function CheckoutClient({
 
   useEffect(() => {
     setClientSecret(null)
+    setServerQuote(null)
   }, [checkoutFingerprint, totalPrice])
 
   const shipping = useMemo(
@@ -522,6 +530,11 @@ export function CheckoutClient({
       ? Math.round((LOCAL_DELIVERY_MIN_SUBTOTAL - totalPrice) * 100) / 100
       : 0
   const grandTotal = totalPrice + shipping.fee + taxQuote.taxAmount + tipForTotal
+  const displaySubtotal = serverQuote?.subtotal ?? totalPrice
+  const displayShippingFee = serverQuote?.shippingFee ?? shipping.fee
+  const displayTaxAmount = serverQuote?.taxAmount ?? taxQuote.taxAmount
+  const displayTaxApplies = serverQuote?.taxApplies ?? taxQuote.applies
+  const displayTotal = serverQuote?.total ?? grandTotal
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const name = e.target.name
@@ -631,6 +644,23 @@ export function CheckoutClient({
       }
 
       if (typeof data.clientSecret === 'string' && data.clientSecret) {
+        const quoteValues = [
+          data.subtotal,
+          data.shippingFee,
+          data.taxAmount,
+          data.total,
+        ].map(Number)
+        if (quoteValues.some((value) => !Number.isFinite(value) || value < 0)) {
+          setError('The server returned an invalid checkout total. Please try again.')
+          return
+        }
+        setServerQuote({
+          subtotal: quoteValues[0],
+          shippingFee: quoteValues[1],
+          taxAmount: quoteValues[2],
+          taxApplies: data.taxApplies === true,
+          total: quoteValues[3],
+        })
         setClientSecret(data.clientSecret)
         return
       }
@@ -1239,19 +1269,19 @@ export function CheckoutClient({
               <div className="mt-4 space-y-2 border-t border-earth-100 pt-4 text-sm">
                 <div className="flex justify-between text-earth-600">
                   <span>Subtotal</span>
-                  <span className="font-medium text-earth-900">${totalPrice.toFixed(2)}</span>
+                  <span className="font-medium text-earth-900">${displaySubtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-earth-600">
                   <span>Shipping</span>
                   <span className="font-medium text-earth-900">
-                    {shipping.fee === 0 ? 'Free' : `$${shipping.fee.toFixed(2)}`}
+                    {displayShippingFee === 0 ? 'Free' : `$${displayShippingFee.toFixed(2)}`}
                   </span>
                 </div>
-                {taxQuote.applies ? (
+                {displayTaxApplies ? (
                   <div className="flex justify-between text-earth-600">
                     <span>Sales tax</span>
                     <span className="font-medium text-earth-900">
-                      ${taxQuote.taxAmount.toFixed(2)}
+                      ${displayTaxAmount.toFixed(2)}
                     </span>
                   </div>
                 ) : null}
@@ -1263,7 +1293,7 @@ export function CheckoutClient({
                 )}
                 <div className="flex justify-between border-t border-earth-100 pt-3 text-lg font-bold text-earth-950">
                   <span>Total</span>
-                  <span>${grandTotal.toFixed(2)}</span>
+                  <span>${displayTotal.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -1304,7 +1334,7 @@ export function CheckoutClient({
                     <CheckoutStripePayment
                       clientSecret={clientSecret}
                       returnUrl={returnUrl}
-                      totalLabel={`$${grandTotal.toFixed(2)}`}
+                      totalLabel={`$${displayTotal.toFixed(2)}`}
                     />
                   </div>
                 )}

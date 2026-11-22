@@ -18,6 +18,8 @@
     "typecheck": "node -e \"require('./scripts/next-dist-dir.cjs').cleanNextTypes()\" && tsc --noEmit",
     "check:env": "node --env-file=.env.local scripts/check-env.mjs",
     "check:env:prod": "node --env-file=.env.local scripts/check-env.mjs --production",
+    "verify:migrations": "node scripts/verify-migrations.mjs",
+    "reconcile:orders": "node --env-file=.env.local scripts/ops/reconcile-stripe-orders.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ci": "next build && playwright test",
     "test:e2e:ui": "playwright test --ui",
@@ -35,12 +37,12 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
     "luxon": "^3.7.2",
-    "next": "^16.2.6",
-    "nodemailer": "^8.0.7",
+    "next": "^16.4.6",
+    "nodemailer": "^10.6.1",
     "postmark": "^4.0.7",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.5",
     "stripe": "^22.0.0",
     "tailwind-merge": "^3.6.0"
   },
@@ -58,7 +60,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "^16.2.6",
+    "eslint-config-next": "^16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
