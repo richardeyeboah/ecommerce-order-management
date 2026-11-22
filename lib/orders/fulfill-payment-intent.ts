@@ -25,6 +25,19 @@ export async function fulfillOrderFromPaymentIntent(
 ): Promise<{ orderId: string; created: boolean }> {
   const stripe = getStripe()
 
+  const { data: existingOrder, error: existingOrderError } = await supabaseAdmin
+    .from('orders')
+    .select('id')
+    .eq('stripe_payment_intent_id', paymentIntentId)
+    .maybeSingle()
+
+  if (existingOrderError) {
+    throw new Error(existingOrderError.message)
+  }
+  if (existingOrder?.id) {
+    return { orderId: existingOrder.id, created: false }
+  }
+
   const pi = await stripe.paymentIntents.retrieve(paymentIntentId)
 
   if (pi.status !== 'succeeded') {
