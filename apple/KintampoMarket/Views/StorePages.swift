@@ -73,8 +73,7 @@ struct ForgotPasswordView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(sending || !email.contains("@"))
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
+                .formButtonRow()
             } footer: {
                 Text("The reset link opens on the website, then you can sign in here with the new password.")
             }
@@ -120,8 +119,7 @@ struct ChangePasswordView: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(saving || password.count < 8 || password != confirm)
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
+            .formButtonRow()
             if password != confirm, !confirm.isEmpty {
                 Text("Passwords do not match.").font(.caption).foregroundStyle(Brand.red)
             }
@@ -161,13 +159,14 @@ struct OrderDetailView: View {
     var body: some View {
         List {
             Section {
+                OrderProgressView(status: order.status, shippingMethod: order.shippingMethod,
+                                  trackingNumber: order.trackingNumber)
+            }
+            Section {
                 LabeledContent("Order", value: order.displayNumber)
-                LabeledContent("Status", value: order.status.replacingOccurrences(of: "_", with: " ").capitalized)
+                LabeledContent("Placed", value: OrderStatusStyle.dateLabel(order.createdAt))
                 if let total = order.totalAmount {
                     LabeledContent("Total", value: String(format: "$%.2f", total))
-                }
-                if let tracking = order.trackingNumber, !tracking.isEmpty {
-                    LabeledContent("Tracking", value: tracking)
                 }
             }
             Section("Items") {
@@ -178,12 +177,15 @@ struct OrderDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(items) { item in
-                        HStack {
-                            Text("\(item.quantity)× \(item.productName)")
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("\(item.quantity)×").foregroundStyle(Brand.inkMuted).monospacedDigit()
+                            Text(item.productName).foregroundStyle(Brand.ink)
                             Spacer()
                             Text(String(format: "$%.2f", item.productPrice * Double(item.quantity)))
-                                .foregroundStyle(Brand.red)
+                                .foregroundStyle(Brand.ink)
+                                .monospacedDigit()
                         }
+                        .font(.subheadline)
                     }
                 }
             }
@@ -191,8 +193,7 @@ struct OrderDetailView: View {
                 Section {
                     Button("Buy again") { Task { await reorder() } }
                         .buttonStyle(PrimaryButtonStyle())
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
+                        .formButtonRow()
                     if let reorderNote {
                         Text(reorderNote).font(.caption).foregroundStyle(.secondary)
                     }
@@ -233,6 +234,103 @@ struct OrderDetailView: View {
             reorderNote = added == 0 ? "None of these items are in stock." : "Added \(added) item\(added == 1 ? "" : "s") to cart."
         } catch {
             reorderNote = error.localizedDescription
+        }
+    }
+}
+
+/// Order timeline: every step of the pickup or shipping flow, done steps filled in.
+struct OrderProgressView: View {
+    let status: String
+    let shippingMethod: String?
+    var trackingNumber: String?
+
+    private var steps: [String] {
+        OrderStatusFlow.isPickup(shippingMethod) ? OrderStatusFlow.pickup : OrderStatusFlow.shipping
+    }
+    private var currentIndex: Int { steps.firstIndex(of: status) ?? 0 }
+
+    var body: some View {
+        if status == "cancelled" {
+            Label("This order was cancelled", systemImage: "xmark.octagon.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Brand.red)
+                .padding(.vertical, 4)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(headline)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Brand.ink)
+                Text(subhead)
+                    .font(.subheadline)
+                    .foregroundStyle(Brand.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 14)
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                    stepRow(step, index: index)
+                }
+                if let trackingNumber, !trackingNumber.isEmpty, let url = OrderStatusFlow.trackingURL(trackingNumber) {
+                    Link(destination: url) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Track package").font(.subheadline.weight(.semibold))
+                                Text(trackingNumber).font(.caption.monospaced()).foregroundStyle(Brand.inkMuted)
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.up.right").font(.caption.weight(.bold))
+                        }
+                        .foregroundStyle(Brand.red)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 48)
+                        .background(Brand.red.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .padding(.top, 12)
+                }
+            }
+            .padding(.vertical, 6)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private var headline: String { OrderStatusFlow.label(status, shippingMethod: shippingMethod) }
+
+    private var subhead: String {
+        let pickup = OrderStatusFlow.isPickup(shippingMethod)
+        switch status {
+        case "ordered": return "We have your order and will start on it shortly."
+        case "processing": return pickup ? "We're picking your items. We'll tell you when it's ready." : "We're packing your order."
+        case "ready_for_pickup": return "Come by \(StoreConfig.address). \(StoreConfig.pickupStatus())."
+        case "shipped": return "Your package is on its way."
+        case "out_for_delivery": return "Arriving today."
+        case "delivered": return pickup ? "Thanks for shopping with us." : "Your package was delivered."
+        default: return ""
+        }
+    }
+
+    private func stepRow(_ step: String, index: Int) -> some View {
+        let done = index <= currentIndex
+        let isLast = index == steps.count - 1
+        return HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 0) {
+                ZStack {
+                    Circle().fill(done ? Brand.forest : Brand.card)
+                    Circle().stroke(done ? Brand.forest : Brand.line, lineWidth: 2)
+                    if done {
+                        Image(systemName: "checkmark").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 20, height: 20)
+                if !isLast {
+                    Rectangle()
+                        .fill(index < currentIndex ? Brand.forest : Brand.line)
+                        .frame(width: 2)
+                        .frame(minHeight: 22)
+                }
+            }
+            Text(OrderStatusFlow.label(step, shippingMethod: shippingMethod))
+                .font(.subheadline.weight(index == currentIndex ? .semibold : .regular))
+                .foregroundStyle(done ? Brand.ink : Brand.inkMuted)
+                .padding(.top, 1)
+            Spacer(minLength: 0)
         }
     }
 }
@@ -310,8 +408,7 @@ struct RecipeDetailView: View {
                 Section {
                     Button("Add linked ingredients to cart") { Task { await addIngredients() } }
                         .buttonStyle(PrimaryButtonStyle())
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
+                        .formButtonRow()
                 }
             }
         }

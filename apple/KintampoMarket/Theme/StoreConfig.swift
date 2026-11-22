@@ -23,6 +23,34 @@ enum StoreConfig {
 
     static let freeShippingThreshold = 120
 
+    /// Store clock: the shop is in Columbus, whatever time zone the phone is in.
+    static var storeCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        return calendar
+    }
+
+    /// Opening hours (24h) for a `Calendar` weekday (1 = Sunday). Matches `hours`.
+    static func openingHours(weekday: Int) -> (open: Int, close: Int) {
+        weekday == 1 ? (10, 18) : (9, 20)
+    }
+
+    /// Pickup line for product pages: "Open now until 8pm", "Opens at 9am", "Opens tomorrow at 10am".
+    static func pickupStatus(at date: Date = Date()) -> String {
+        let calendar = storeCalendar
+        let hour = calendar.component(.hour, from: date)
+        let today = openingHours(weekday: calendar.component(.weekday, from: date))
+        if hour >= today.open && hour < today.close { return "Open now until \(clock(today.close))" }
+        if hour < today.open { return "Opens today at \(clock(today.open))" }
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: date) ?? date
+        return "Opens tomorrow at \(clock(openingHours(weekday: calendar.component(.weekday, from: tomorrow)).open))"
+    }
+
+    private static func clock(_ hour: Int) -> String {
+        let h = hour % 12 == 0 ? 12 : hour % 12
+        return "\(h)\(hour < 12 ? "am" : "pm")"
+    }
+
     /// Suggested in Shop search; only terms that match stocked products are shown.
     static let popularSearches = ["fufu", "gari", "yam", "plantain", "palm oil", "shito", "malta", "shea butter", "kente", "suya"]
 
@@ -59,5 +87,15 @@ enum StoreConfig {
     /// True when `product` belongs to a Shop filter (a real category or the Fashion group).
     static func matches(_ category: String, filter: String) -> Bool {
         filter == fashionGroup ? fashionCategories.contains(category) : category == filter
+    }
+}
+
+/// "6145550188" / "+16145550188" → "(614) 555-0188"; anything else is shown as typed.
+enum PhoneFormat {
+    static func display(_ raw: String) -> String {
+        var digits = raw.filter(\.isNumber)
+        if digits.count == 11, digits.hasPrefix("1") { digits.removeFirst() }
+        guard digits.count == 10 else { return raw }
+        return "(\(digits.prefix(3))) \(digits.dropFirst(3).prefix(3))-\(digits.suffix(4))"
     }
 }

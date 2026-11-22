@@ -1,10 +1,14 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 // MARK: - Store manager: orders queue
 
 /// Staff-facing order management — same data and rules as the web `/admin/orders` dashboard.
 struct AdminOrdersView: View {
     var initialStatus: String? = nil
+    var initialQueue: AdminQueue? = nil
     @Bindable private var admin = AdminStore.shared
 
     var body: some View {
@@ -12,7 +16,7 @@ struct AdminOrdersView: View {
             if !admin.checked {
                 List { SkeletonRows(count: 6, showsImage: false) }
             } else if admin.isSignedIn {
-                AdminOrderQueue(status: initialStatus, queue: initialStatus == nil ? .needsAction : .all)
+                AdminOrderQueue(status: initialStatus, queue: initialQueue ?? (initialStatus == nil ? .needsAction : .all))
             } else {
                 AdminSignInView()
             }
@@ -39,8 +43,7 @@ struct AdminSignInView: View {
                 Button(isLoading ? "Signing in…" : "Sign in") { Task { await signIn() } }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(password.isEmpty || isLoading)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
+                    .formButtonRow()
                 if let errorMessage {
                     Text(errorMessage).font(.caption).foregroundStyle(.red)
                 }
@@ -93,7 +96,7 @@ private struct AdminOrderQueue: View {
             Section {
                 Picker("Queue", selection: $queue) {
                     ForEach(AdminQueue.allCases) { item in
-                        let count = counts.isEmpty ? nil
+                        let count = counts.isEmpty || item == .toShip ? nil
                             : item == .needsAction ? Self.needsActionStatuses.reduce(0) { $0 + (counts[$1] ?? 0) }
                             : counts.values.reduce(0, +)
                         Text(item.label + countLabel(count)).tag(item)
@@ -303,6 +306,8 @@ struct AdminOrderDetailView: View {
     @State private var note = ""
     @State private var saving = false
     @State private var saveMessage: String?
+    @State private var confirmNotify = false
+    @State private var notifyMessage: String?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -356,18 +361,51 @@ struct AdminOrderDetailView: View {
                 }
                 if let phone = order.customerPhone, !phone.isEmpty,
                    let url = URL(string: "tel:\(phone.filter { $0.isNumber || $0 == "+" })") {
-                    Button(phone) { openURL(url) }
+                    Button(PhoneFormat.display(phone)) { openURL(url) }
                 }
                 if order.isPickup {
                     if let contact = order.pickupContactName, !contact.isEmpty {
                         LabeledContent("Pickup by", value: contact)
                     }
                 } else if !order.addressSummary.isEmpty {
-                    Text(order.addressSummary).font(.callout)
+                    Text(order.addressSummary).font(.callout).textSelection(.enabled)
+                    HStack(spacing: 16) {
+                        Button {
+                            #if os(iOS)
+                            UIPasteboard.general.string = [order.customerName, order.addressSummary]
+                                .compactMap { $0 }.joined(separator: "\n")
+                            #endif
+                        } label: { Label("Copy", systemImage: "doc.on.doc") }
+                        if let maps = URL(string: "http://maps.apple.com/?q=\(order.addressSummary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
+                            Button { openURL(maps) } label: { Label("Maps", systemImage: "map") }
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.subheadline)
+                }
+                if let email = order.customerEmail, !email.isEmpty {
+                    Button {
+                        confirmNotify = true
+                    } label: {
+                        Label("Email status update", systemImage: "envelope.badge")
+                    }
+                    .buttonStyle(.borderless)
+                    .confirmationDialog("Email \(email) the current status?", isPresented: $confirmNotify, titleVisibility: .visible) {
+                        Button("Send email") { Task { await notify(orderID: order.id) } }
+                    } message: {
+                        Text("Sends the \(OrderStatusFlow.label(order.status, shippingMethod: order.shippingMethod)) email again\(order.trackingNumber.map { ", with tracking \($0)" } ?? "").")
+                    }
+                    if let notifyMessage {
+                        Text(notifyMessage).font(.caption).foregroundStyle(Brand.inkMuted)
+                    }
                 }
             }
 
+
             Section("Items") {
+                if detail.items.isEmpty {
+                    Text("No line items on this order.").foregroundStyle(Brand.inkMuted)
+                }
                 ForEach(detail.items) { item in
                     HStack {
                         Text("\(item.quantity)× \(item.productName)")
@@ -379,6 +417,12 @@ struct AdminOrderDetailView: View {
                 }
             }
 
+            if order.needsCarrierLabel {
+                ShippingLabelSection(order: order) { Task { await load(); onChange() } }
+            }
+
+            OrderPaymentSection(order: order) { Task { await load(); onChange() } }
+
             Section {
                 if let next = OrderStatusFlow.next(after: order.status, shippingMethod: order.shippingMethod) {
                     Button("Mark \(OrderStatusFlow.label(next, shippingMethod: order.shippingMethod))") {
@@ -387,8 +431,7 @@ struct AdminOrderDetailView: View {
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(saving)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
+                    .formButtonRow()
                     .accessibilityIdentifier("advanceStatus")
                 }
                 Picker("Set status", selection: $newStatus) {
@@ -458,6 +501,17 @@ struct AdminOrderDetailView: View {
             AdminStore.shared.sessionExpired()
         } catch {
             loadError = error.localizedDescription
+        }
+    }
+
+    private func notify(orderID: String) async {
+        do {
+            try await AdminAPI.shared.notifyCustomer(orderID: orderID)
+            notifyMessage = "Email sent."
+        } catch AppError.unauthorized {
+            AdminStore.shared.sessionExpired()
+        } catch {
+            notifyMessage = error.localizedDescription
         }
     }
 

@@ -80,8 +80,7 @@ struct AccountView: View {
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(auth.email.isEmpty || password.isEmpty || isLoading)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
+                    .formButtonRow()
                     Button("Create account") { showSignUp = true }
                     NavigationLink("Forgot password") { ForgotPasswordView() }
                     if let errorMessage {

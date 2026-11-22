@@ -9,6 +9,12 @@ final class AppRouter {
     var pendingProductID: String?
     var selectedTab = 0
     var requestedTab: Int?
+    /// Bumped to open Shop at its root with the search field focused (Home's search bar).
+    var searchRequest = 0
+
+    func openSearch() {
+        searchRequest += 1
+    }
 
     func open(_ url: URL) {
         guard let id = Self.productID(from: url) else { return }

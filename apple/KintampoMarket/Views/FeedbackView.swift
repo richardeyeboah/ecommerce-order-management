@@ -59,8 +59,7 @@ struct FeedbackView: View {
                     Button(sending ? "Sending…" : "Send feedback") { Task { await send() } }
                         .buttonStyle(PrimaryButtonStyle())
                         .disabled(sending || !emailLooksValid || trimmedMessage.count < 10 || trimmedMessage.count > 2000)
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
+                        .formButtonRow()
                     if let errorMessage {
                         Text(errorMessage).font(.caption).foregroundStyle(.red)
                     }

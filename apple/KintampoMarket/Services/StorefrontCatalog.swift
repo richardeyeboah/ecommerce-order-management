@@ -26,17 +26,27 @@ enum StorefrontCatalog {
         AppConfig.siteURL.appending(path: "products").appending(path: id)
     }
 
-    /// Rewrite public storage URLs through the storefront proxy so CSP-safe photos load in-app.
-    static func displayURL(_ url: URL) -> URL {
+    /// URLs to try for a product photo, best first.
+    ///
+    /// The app loads straight from Supabase storage: the website's `/media` proxy exists only
+    /// for the browser's CSP and adds a Vercel hop (about 3x slower, never cached). With a
+    /// `width`, the first URL is Supabase's resized rendition and the original is the fallback
+    /// (the renderer can be unavailable on some plans). The `?v=` version is kept so a replaced
+    /// photo is never served from an old cache entry.
+    static func imageURLs(_ url: URL, width: Int?) -> [URL] {
         let host = url.host?.lowercased() ?? ""
-        let path = url.path
+        let objectMarker = "/storage/v1/object/public/"
         guard host.hasSuffix("supabase.co"),
-              let marker = path.range(of: "/product-images/")
-        else { return url }
-        let objectPath = String(path[marker.upperBound...])
-        return AppConfig.siteURL
-            .appending(path: "media")
-            .appending(path: "product-images")
-            .appending(path: objectPath)
+              let width,
+              let range = url.absoluteString.range(of: objectMarker),
+              var components = URLComponents(string: url.absoluteString.replacingCharacters(
+                in: range, with: "/storage/v1/render/image/public/"
+              ))
+        else { return [url] }
+        var items = components.queryItems ?? []
+        items.append(URLQueryItem(name: "width", value: String(width)))
+        items.append(URLQueryItem(name: "quality", value: "75"))
+        components.queryItems = items
+        return [components.url, url].compactMap { $0 }
     }
 }

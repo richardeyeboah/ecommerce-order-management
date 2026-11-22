@@ -164,9 +164,16 @@ enum PickupSlotOption: String, CaseIterable, Identifiable {
 
 enum AdminQueue: String, CaseIterable, Identifiable {
     case needsAction = "needs_action"
+    case toShip = "to_ship"
     case all
     var id: String { rawValue }
-    var label: String { self == .needsAction ? "Needs action" : "All orders" }
+    var label: String {
+        switch self {
+        case .needsAction: "Needs action"
+        case .toShip: "To ship"
+        case .all: "All orders"
+        }
+    }
 }
 
 /// Order row from `/api/admin/orders` and the `order` object of `/api/admin/orders/:id`.
@@ -207,9 +214,20 @@ struct AdminOrder: Codable, Identifiable, Hashable, Sendable {
     let state: String?
     let postalCode: String?
     let pickupContactName: String?
+    // Detail-only fields (`/api/admin/orders/:id` returns the whole row).
+    var paymentMethod: String? = nil
+    var shippingLabelURL: String? = nil
+    var refundedAt: String? = nil
+    var refundAmount: Double? = nil
+    var stripePaymentIntentID: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, status, city, state
+        case paymentMethod = "payment_method"
+        case shippingLabelURL = "shipping_label_url"
+        case refundedAt = "refunded_at"
+        case refundAmount = "refund_amount"
+        case stripePaymentIntentID = "stripe_payment_intent_id"
         case orderNumber = "order_number"
         case createdAt = "created_at"
         case customerName = "customer_name"
@@ -230,6 +248,16 @@ struct AdminOrder: Codable, Identifiable, Hashable, Sendable {
     }
 
     var isPickup: Bool { OrderStatusFlow.isPickup(shippingMethod) }
+    var hasLabel: Bool { !(shippingLabelURL ?? "").isEmpty }
+    /// Orders that leave by carrier. Pickup and local delivery never need postage.
+    var needsCarrierLabel: Bool {
+        !isPickup && shippingMethod != ShippingMethodOption.local_delivery.rawValue && status != "cancelled"
+    }
+    var isUnpaid: Bool { paymentStatus == "unpaid" }
+    var isRefunded: Bool { refundedAt != nil }
+    /// Refunds go back through Stripe, so only card orders can be refunded from the app.
+    var canRefund: Bool { !isRefunded && !(stripePaymentIntentID ?? "").isEmpty && !isUnpaid }
+    var refundableAmount: Double { max(0, (totalAmount ?? 0) - (refundAmount ?? 0)) }
 
     var addressSummary: String {
         [addressLine, city, state, postalCode].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
@@ -281,12 +309,78 @@ enum OrderStatusFlow {
         return flow[index + 1]
     }
 
+    /// Carrier tracking page for a label number (Shippo labels are USPS or UPS; FedEx by length).
+    static func trackingURL(_ number: String) -> URL? {
+        let n = number.filter { !$0.isWhitespace }.uppercased()
+        guard !n.isEmpty, let encoded = n.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return nil }
+        if n.hasPrefix("1Z") { return URL(string: "https://www.ups.com/track?tracknum=\(encoded)") }
+        if n.allSatisfy(\.isNumber), [12, 15].contains(n.count) {
+            return URL(string: "https://www.fedex.com/fedextrack/?trknbr=\(encoded)")
+        }
+        return URL(string: "https://tools.usps.com/go/TrackConfirmAction?tLabels=\(encoded)")
+    }
+
     static func label(_ status: String, shippingMethod: String?) -> String {
         if status == "delivered", isPickup(shippingMethod) { return "Picked up" }
         switch status {
         case "ready_for_pickup": return "Ready for pickup"
         case "out_for_delivery": return "Out for delivery"
         default: return status.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+}
+
+// MARK: - Shipping labels
+
+/// Box size sent with rate and label requests (pounds and inches, like the web dashboard).
+struct ParcelSize: Codable, Hashable, Sendable {
+    var weightLb: Double = 3
+    var lengthIn: Double = 12
+    var widthIn: Double = 10
+    var heightIn: Double = 8
+
+    var summary: String {
+        func n(_ v: Double) -> String { v.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(v)) : String(format: "%.1f", v) }
+        return "\(n(weightLb)) lb · \(n(lengthIn))×\(n(widthIn))×\(n(heightIn)) in"
+    }
+
+    /// Saved box presets so staff pick instead of typing.
+    static let presets: [(name: String, size: ParcelSize)] = [
+        ("Small box", ParcelSize(weightLb: 2, lengthIn: 10, widthIn: 8, heightIn: 4)),
+        ("Medium box", ParcelSize(weightLb: 3, lengthIn: 12, widthIn: 10, heightIn: 8)),
+        ("Large box", ParcelSize(weightLb: 10, lengthIn: 18, widthIn: 14, heightIn: 12)),
+    ]
+}
+
+/// `/api/admin/orders/:id/shipping/usps-rate`.
+struct ShippingRate: Decodable, Sendable {
+    let price: Double
+    let description: String?
+    let mailClass: String?
+    let provider: String?
+}
+
+/// `/api/admin/orders/:id/shipping/usps-label`.
+struct ShippingLabelResult: Decodable, Sendable {
+    let trackingNumber: String
+    let postage: Double?
+    let mailClass: String?
+    let labelUrl: String?
+    let labelPdfBase64: String?
+    let customerNotified: Bool?
+
+    var pdf: Data? { labelPdfBase64.flatMap { Data(base64Encoded: $0) } }
+}
+
+/// Manual settlement options, matching `MANUAL_SETTLE_OPTIONS` on the website.
+enum ManualPaymentMethod: String, CaseIterable, Identifiable, Sendable {
+    case cod, zelle, manual
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .cod: "Cash"
+        case .zelle: "Zelle"
+        case .manual: "Card at store / other"
         }
     }
 }
