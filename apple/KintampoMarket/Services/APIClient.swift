@@ -92,6 +92,18 @@ struct APIClient {
         }
     }
 
+    /// Permanently deletes the signed-in account (`/api/account/delete`).
+    func deleteAccount(accessToken: String) async throws {
+        var request = URLRequest(url: baseURL.appending(path: "api/account/delete"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw AppError.network(message ?? "Could not delete the account. Please try again.")
+        }
+    }
+
     func createPaymentIntent(
         name: String,
         email: String,

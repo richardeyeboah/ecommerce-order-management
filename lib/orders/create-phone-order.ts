@@ -1,4 +1,5 @@
 import { STORE } from '@/lib/constants/store'
+import { decrementStockForOrder } from '@/lib/orders/decrement-stock'
 import {
   MANUAL_SETTLE_OPTIONS,
   normalizeManualSettleMethod,
@@ -263,6 +264,8 @@ export async function createPhoneOrder(
     await supabaseAdmin.from('orders').delete().eq('id', order.id)
     return { ok: false, error: 'Could not save order items.', status: 500 }
   }
+
+  await decrementStockForOrder(itemRows)
 
   const logNoteParts = [
     `Source: ${source}`,

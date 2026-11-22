@@ -1,6 +1,43 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { isPasswordAcceptableForSignup } from '@/lib/auth/password-strength'
+import { sendTransactionalEmail } from '@/lib/email/send-order-emails'
+import { CANONICAL_SITE_URL, getPublicSiteUrl } from '@/lib/site-url'
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+}
+
+/** Welcome note after a new account. Best effort: signup succeeds even if email is down. */
+async function sendWelcomeEmail(email: string, firstName: string): Promise<void> {
+  const origin = getPublicSiteUrl()
+  const site = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin) ? CANONICAL_SITE_URL : origin
+  const shop = `${site}/shop`
+  const sent = await sendTransactionalEmail({
+    to: email,
+    subject: 'Welcome to Kintampo African Market',
+    text: [
+      `Hi ${firstName},`,
+      '',
+      'Your Kintampo African Market account is ready.',
+      'Order online for free pickup in Columbus, or get it shipped (free on orders $120+).',
+      'Track orders, save items and check out faster when you sign in.',
+      '',
+      `Start shopping: ${shop}`,
+    ].join('\n'),
+    html: `<!DOCTYPE html>
+<html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#1c1917;max-width:480px;margin:0 auto;padding:24px;">
+  <p style="margin:0 0 16px;font-size:16px;font-weight:600;">Welcome, ${escapeHtml(firstName)}</p>
+  <p style="margin:0 0 12px;font-size:14px;color:#57534e;">Your Kintampo African Market account is ready.</p>
+  <p style="margin:0 0 20px;font-size:14px;color:#57534e;">Order online for free pickup in Columbus, or get it shipped (free on orders $120+). Sign in to track orders, save items and check out faster.</p>
+  <p style="margin:0 0 24px;">
+    <a href="${shop}" style="display:inline-block;background:#CE1126;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 20px;border-radius:10px;">Start shopping</a>
+  </p>
+  <p style="margin:0;font-size:12px;color:#78716c;">You're receiving this because an account was created with this email.</p>
+</body></html>`,
+  })
+  if (!sent) console.warn('[auth/signup] welcome email not sent')
+}
 
 export const runtime = 'nodejs'
 
@@ -98,6 +135,7 @@ export async function POST(request: Request) {
     })
 
     if (!error && data.user) {
+      await sendWelcomeEmail(email, firstName).catch((e) => console.error('[auth/signup] welcome', e))
       return NextResponse.json({ ok: true })
     }
 

@@ -8,6 +8,9 @@ struct AccountView: View {
     @State private var showSignUp = false
     @State private var editName = ""
     @State private var editPhone = ""
+    @State private var confirmDelete = false
+    @State private var deleting = false
+    @State private var deleteError: String?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -34,9 +37,39 @@ struct AccountView: View {
 
                 Section("Your store") {
                     NavigationLink("Orders") { OrdersView() }
-                    NavigationLink("Wishlist") { WishlistView() }
+                    NavigationLink("Saved items") { WishlistView() }
                     NavigationLink("Addresses") { AddressesView() }
                     NavigationLink("Password") { ChangePasswordView() }
+                }
+
+                Section {
+                    Button(deleting ? "Deleting account…" : "Delete account", role: .destructive) {
+                        confirmDelete = true
+                    }
+                    .disabled(deleting)
+                    .accessibilityIdentifier("deleteAccount")
+                    if let deleteError {
+                        Text(deleteError).font(.caption).foregroundStyle(.red)
+                    }
+                } footer: {
+                    Text("Removes your login, saved addresses and saved items. Past orders stay in the store's records for receipts, returns and taxes.")
+                }
+                .alert("Delete your account?", isPresented: $confirmDelete) {
+                    Button("Delete permanently", role: .destructive) {
+                        Task {
+                            deleting = true
+                            defer { deleting = false }
+                            do {
+                                try await auth.deleteAccount()
+                                deleteError = nil
+                            } catch {
+                                deleteError = error.localizedDescription
+                            }
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This can't be undone. \(auth.email) will be signed out and can't sign in again.")
                 }
             } else {
                 Section {
@@ -96,18 +129,18 @@ struct AccountView: View {
                 NavigationLink("Send feedback") { FeedbackView() }
             }
 
-            Section("Store info") {
+            Section {
                 NavigationLink("FAQ") { StoreWebPage(title: "FAQ", path: "faq") }
                 NavigationLink("Shipping") { StoreWebPage(title: "Shipping", path: "shipping") }
                 NavigationLink("Returns") { StoreWebPage(title: "Returns", path: "returns") }
                 NavigationLink("Privacy") { StoreWebPage(title: "Privacy", path: "privacy") }
                 NavigationLink("Terms") { StoreWebPage(title: "Terms", path: "terms") }
-                #if os(iOS)
-                    Button("Order alerts") { Task { await PushRegistration.registerIfPossible(ask: true) } }
-                    Text("Get a notification when your order is ready or ships.")
-                        .font(.caption)
-                        .foregroundStyle(Brand.inkMuted)
-                #endif
+            } header: {
+                Text("Store info")
+            } footer: {
+                // Push alerts need an APNs key (paid Apple Developer account) and a server sender;
+                // until then, say what actually happens instead of offering a switch that does nothing.
+                Text("Order updates come by email: we write when your order is ready for pickup or ships, with tracking.")
             }
 
             Section("Store") {

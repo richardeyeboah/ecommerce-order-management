@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { DeleteAccount } from '@/components/account/DeleteAccount'
 import { createClientOptional } from '@/lib/supabase/server'
 import { ProfileForm } from './ProfileForm'
 
@@ -29,6 +30,7 @@ export default async function ProfilePage() {
           }}
         />
       </div>
+      <DeleteAccount />
     </>
   )
 }

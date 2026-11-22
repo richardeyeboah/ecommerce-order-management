@@ -1,4 +1,5 @@
 import type Stripe from 'stripe'
+import { decrementStockForOrder } from '@/lib/orders/decrement-stock'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendOrderEmails } from '@/lib/email/send-order-emails'
 import { sendOrderSmsToMerchant } from '@/lib/notifications/send-order-sms'
@@ -163,6 +164,8 @@ export async function fulfillOrderFromStripeSession(sessionId: string): Promise<
     console.error('[stripe] order_items insert failed', itemsError)
     throw new Error(itemsError.message)
   }
+
+  await decrementStockForOrder(orderItems)
 
   const { error: logError } = await supabaseAdmin.from('order_status_logs').insert({
     order_id: order.id,

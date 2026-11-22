@@ -113,12 +113,17 @@ struct ChangePasswordView: View {
     var body: some View {
         Form {
             SecureField("New password", text: $password)
+                .textContentType(.newPassword)
+            if !password.isEmpty {
+                PasswordRules(password: password)
+            }
             SecureField("Confirm password", text: $confirm)
+                .textContentType(.newPassword)
             Button(saving ? "Saving…" : "Update password") {
                 Task { await save() }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(saving || password.count < 8 || password != confirm)
+            .disabled(saving || !PasswordPolicy.isAcceptable(password) || password != confirm)
             .formButtonRow()
             if password != confirm, !confirm.isEmpty {
                 Text("Passwords do not match.").font(.caption).foregroundStyle(Brand.red)
