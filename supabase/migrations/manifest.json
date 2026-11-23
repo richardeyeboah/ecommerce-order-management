@@ -3,6 +3,10 @@
     {
       "version": "20261122220000_commerce_reliability",
       "file": "20261122220000_commerce_reliability.sql"
+    },
+    {
+      "version": "20261122230000_staff_role_dashboard",
+      "file": "20261122230000_staff_role_dashboard.sql"
     }
   ]
 }
