@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { actorLabel } from '@/lib/auth/admin-actor'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { normalizeOrderStatus, orderStatusLabel, isPickupShippingMethod } from '@/lib/order-status'
 import { assertSameOrigin } from '@/lib/security/same-origin'
@@ -67,7 +68,7 @@ export async function POST(
       order_id: id,
       from_status: status,
       to_status: status,
-      changed_by: 'admin',
+      changed_by: actorLabel(auth.actor),
       note: `Resent "${label}" notice to ${order.customer_email}`,
     })
 

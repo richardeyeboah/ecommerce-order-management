@@ -22,6 +22,8 @@ async function uploadLabelPdf(orderId: string, trackingNumber: string, pdf: Buff
 export type ApplyLabelOptions = {
   /** Label broker used for purchase (affects admin notes only). */
   provider?: 'shippo' | 'usps'
+  /** Who bought it, for the order history. */
+  changedBy?: string
 }
 
 export async function applyUspsLabelToOrder(
@@ -101,7 +103,7 @@ export async function applyUspsLabelToOrder(
     order_id: orderId,
     from_status: fromStatus,
     to_status: toStatus,
-    changed_by: 'admin',
+    changed_by: options.changedBy ?? 'admin',
     note,
   })
 

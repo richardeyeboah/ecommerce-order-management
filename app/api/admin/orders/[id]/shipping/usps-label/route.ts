@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { actorLabel } from '@/lib/auth/admin-actor'
 import { formatOrderNumber } from '@/lib/orders/order-number'
 import { assertSameOrigin } from '@/lib/security/same-origin'
 import { applyUspsLabelToOrder } from '@/lib/shipping/apply-usps-label'
@@ -95,7 +96,7 @@ export async function POST(
       label = await createUspsDomesticLabel({ from, to, parcel })
     }
 
-    const applied = await applyUspsLabelToOrder(id, label, { provider })
+    const applied = await applyUspsLabelToOrder(id, label, { provider, changedBy: actorLabel(auth.actor) })
     if (!applied.ok) {
       return NextResponse.json({ error: applied.error }, { status: 500 })
     }

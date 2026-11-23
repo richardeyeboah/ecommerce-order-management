@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { loadStaffActor } from '@/lib/auth/admin-actor'
+import { getSupabasePublicConfig } from '@/lib/supabase/config'
 import { isSupabaseAdminRoleBypassEnabled } from '@/lib/auth/admin-access-mode'
 import {
   ADMIN_COOKIE_NAME,
@@ -54,26 +57,39 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let body: { email?: unknown; password?: unknown }
+  try {
+    body = (await req.json()) ?? {}
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
+  }
+
+  const rateLimited = process.env.NODE_ENV === 'production' && !isAdminLoginRateLimitDisabled()
+  const supplied = typeof body.password === 'string' ? body.password.trim().normalize('NFKC') : ''
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+
+  // Staff account: their own email and password, and profiles.role of staff or admin.
+  if (email) {
+    const staff = await signInStaff(email, typeof body.password === 'string' ? body.password : '')
+    if (!staff.ok) {
+      if (rateLimited) await recordFailedLogin(ip)
+      return NextResponse.json({ error: staff.error }, { status: 401 })
+    }
+    await clearLoginFailures(ip)
+    const { token } = await createAdminSessionToken(Date.now(), staff.userId)
+    return withSessionCookie(NextResponse.json({ success: true, name: staff.name, role: staff.role }), token)
+  }
+
+  // Store password (ADMIN_PASSWORD): the owner's shared login.
   const expected = process.env.ADMIN_PASSWORD?.trim()
   if (!expected) {
     console.error('[admin-login] ADMIN_PASSWORD is not configured.')
     return NextResponse.json({ error: 'Admin login is not configured.' }, { status: 503 })
   }
-
-  let suppliedRaw: unknown
-  try {
-    const body = await req.json()
-    suppliedRaw = body?.password
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
-  }
-
-  const supplied =
-    typeof suppliedRaw === 'string' ? suppliedRaw.trim().normalize('NFKC') : ''
   const expectedNorm = expected.normalize('NFKC')
 
   if (supplied.length === 0 || !constantTimeEquals(supplied, expectedNorm)) {
-    if (process.env.NODE_ENV === 'production' && !isAdminLoginRateLimitDisabled()) {
+    if (rateLimited) {
       await recordFailedLogin(ip)
     } else {
       const maskedSupplied =
@@ -91,8 +107,10 @@ export async function POST(req: NextRequest) {
   await clearLoginFailures(ip)
 
   const { token } = await createAdminSessionToken()
+  return withSessionCookie(NextResponse.json({ success: true, name: 'Owner', role: 'owner' }), token)
+}
 
-  const res = NextResponse.json({ success: true })
+function withSessionCookie(res: NextResponse, token: string): NextResponse {
   res.cookies.set(ADMIN_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -101,4 +119,29 @@ export async function POST(req: NextRequest) {
     path: '/',
   })
   return res
+}
+
+/** Checks the password with Supabase Auth, then that the account has a staff role. */
+async function signInStaff(
+  email: string,
+  password: string
+): Promise<{ ok: true; userId: string; name: string; role: string } | { ok: false; error: string }> {
+  const { url, anonKey, configured } = getSupabasePublicConfig()
+  if (!configured || !password) return { ok: false, error: 'Wrong email or password.' }
+  const client = createSupabaseClient(url, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+  const { data, error } = await client.auth.signInWithPassword({ email, password })
+  if (error || !data.user) return { ok: false, error: 'Wrong email or password.' }
+  // Only needed to prove the password; the admin cookie is the session from here on.
+  await client.auth.signOut().catch(() => {})
+
+  const actor = await loadStaffActor(data.user.id)
+  if (!actor || actor.kind === 'owner') {
+    return {
+      ok: false,
+      error: 'This account is not a staff account. Ask the owner to add you under Staff.',
+    }
+  }
+  return { ok: true, userId: data.user.id, name: actor.name, role: actor.kind }
 }

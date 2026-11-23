@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { actorLabel } from '@/lib/auth/admin-actor'
 import { assertSameOrigin } from '@/lib/security/same-origin'
 import {
   isStatusAllowedFor,
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
         order_id: id,
         from_status: fromStatusMap.get(id) ?? null,
         to_status: status,
-        changed_by: 'admin-bulk',
+        changed_by: `${actorLabel(auth.actor)} (bulk)`,
         note: `Bulk update to ${status}`,
       }))
     )

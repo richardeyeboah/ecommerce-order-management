@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
       .eq('order_id', order.id),
     supabaseAdmin
       .from('order_status_logs')
-      .select('id,from_status,to_status,changed_at,changed_by,note')
+      .select('id,from_status,to_status,changed_at,note')
       .eq('order_id', order.id)
       .order('changed_at', { ascending: true }),
   ])

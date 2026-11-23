@@ -269,6 +269,30 @@ final class MockHTTP: URLProtocol, @unchecked Sendable {
         check(!PasswordPolicy.isAcceptable("éÉéÉéÉ1#a"), "Accented letters are not ASCII upper/lower, like the server")
         check(!PasswordPolicy.isAcceptable("Short#1"), "Needs 8 characters")
 
+        // Staff accounts: who is signed in, and the staff list.
+        let owner = try decode("""
+        {"name":"Owner","role":"owner","email":null,"canManageStaff":true}
+        """, as: StaffIdentity.self)
+        check(owner.canManageStaff && owner.roleLabel.hasPrefix("Owner"), "Store password signs in as owner")
+        let list = try decode("""
+        {"staff":[{"id":"u1","name":null,"email":"ama@example.com","role":"staff","addedAt":null}],"canManageStaff":false}
+        """, as: StaffList.self)
+        check(list.staff.first?.displayName == "ama@example.com" && list.canManageStaff == false, "Staff list decodes")
+        check(AdminOrderDetailViewLabels.actor("Ama Mensah") == "by Ama Mensah", "Staff name shows in history")
+        check(AdminOrderDetailViewLabels.actor("admin") == "by staff", "Old entries read as staff")
+        check(AdminOrderDetailViewLabels.actor("shippo_webhook") == "automatic", "Carrier updates read as automatic")
+
+        // New-order alerts: only orders after the last one seen, oldest first; nothing on first run.
+        let alertOrders = try decode("""
+        [{"id":"a","created_at":"2026-11-23T10:00:00+00:00","status":"ordered"},
+         {"id":"b","created_at":"2026-11-23T10:05:00.123+00:00","status":"ordered"},
+         {"id":"c","created_at":"2026-11-23 10:07:00.123456+00","status":"ordered"}]
+        """, as: [AdminOrder].self)
+        check(OrderAlerts.newOrders(alertOrders, after: nil).isEmpty, "First check never alerts for old orders")
+        check(OrderAlerts.newOrders(alertOrders, after: "2026-11-23T10:00:00+00:00").map(\.id) == ["b", "c"], "Alerts only for newer orders")
+        check(OrderAlerts.newOrders(alertOrders, after: "2026-11-23T10:07:00.123+00:00").isEmpty, "No repeat alerts")
+        check(AdminStore.isConnectionError(URLError(.notConnectedToInternet)) && !AdminStore.isConnectionError(URLError(.badServerResponse)), "Offline is not signed out")
+
         print("PASS: \(checks) mobile regression checks (mock network; no live payments)")
     }
 }

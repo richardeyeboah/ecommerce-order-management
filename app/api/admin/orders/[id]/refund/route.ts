@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { actorLabel } from '@/lib/auth/admin-actor'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { assertSameOrigin } from '@/lib/security/same-origin'
 import { normalizeOrderStatus } from '@/lib/order-status'
@@ -151,7 +152,7 @@ export async function POST(
       order_id: id,
       from_status: fromStatus,
       to_status: toStatus,
-      changed_by: 'admin',
+      changed_by: actorLabel(auth.actor),
       note: `Refunded $${(amountCents / 100).toFixed(2)}${reason ? ` — ${reason}` : ''}${restockError ? ` — inventory restock failed: ${restockError}` : ''}`.slice(0, 500),
     })
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { actorLabel } from '@/lib/auth/admin-actor'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import {
   isStatusAllowedFor,
@@ -135,7 +136,7 @@ export async function PATCH(
           order_id: id,
           from_status: fromStatus,
           to_status: normalized,
-          changed_by: 'admin',
+          changed_by: actorLabel(auth.actor),
           note: combinedNote,
         })
 

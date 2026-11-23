@@ -20,6 +20,11 @@ const intents = new Map()
 const orders = []
 // Store-manager fixture: password `fixture-admin`, plus one pickup order so the queue is never empty.
 const adminCookie = 'admin_session=fixture-admin-session'
+let fixtureMe = { name: 'Owner', role: 'owner', email: null, canManageStaff: true }
+let fixtureStaff = [
+  { id: 'u-ama', name: 'Ama Mensah', email: 'ama@example.com', role: 'staff', addedAt: null },
+  { id: 'u-owner', name: 'Kaleb Doffour', email: 'owner@example.com', role: 'admin', addedAt: null },
+]
 const staffOrders = [{ id: '44444444-4444-4444-8444-444444444444', order_number: 1001, created_at: createdAt, status: 'ordered', customer_name: 'Ama Mensah', customer_email: 'ama@example.com', customer_phone: '6145550123', total_amount: 15, shipping_method: 'pickup', pickup_contact_name: 'Ama Mensah', tracking_number: null },
   { id: '55555555-5555-4555-8555-555555555555', order_number: 1002, created_at: createdAt, status: 'processing', customer_name: 'Kofi Boateng', customer_email: 'kofi@example.com', customer_phone: '6145550188', total_amount: 64.5, shipping_method: 'standard', address_line: '200 Main St', city: 'Dayton', state: 'OH', postal_code: '45402', tracking_number: null, payment_status: 'paid', payment_method: 'stripe', stripe_payment_intent_id: 'pi_fixture', shipping_label_url: null, refund_amount: null, refunded_at: null },
   { id: '66666666-6666-4666-8666-666666666666', order_number: 1003, created_at: createdAt, status: 'ordered', customer_name: 'Esi Owusu', customer_email: 'esi@example.com', customer_phone: '6145550190', total_amount: 22, shipping_method: 'pickup', pickup_contact_name: 'Esi Owusu', tracking_number: null, payment_status: 'unpaid', payment_method: 'cod' }]
@@ -91,15 +96,38 @@ http.createServer(async (req, res) => {
       return send(200, { ok: true })
     }
     if (url.pathname === '/api/admin/login') {
-      if (body.password !== 'fixture-admin') return send(401, { error: 'Invalid password.' })
+      // Store password `fixture-admin` (owner), or staff account ama@example.com / `fixture-staff`.
+      const asStaff = typeof body.email === 'string' && body.email.length > 0
+      if (asStaff ? body.email !== 'ama@example.com' || body.password !== 'fixture-staff' : body.password !== 'fixture-admin') {
+        return send(401, { error: asStaff ? 'Wrong email or password.' : 'Invalid password.' })
+      }
+      fixtureMe = asStaff
+        ? { name: 'Ama Mensah', role: 'staff', email: 'ama@example.com', canManageStaff: false }
+        : { name: 'Owner', role: 'owner', email: null, canManageStaff: true }
       res.setHeader('Set-Cookie', `${adminCookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800`)
-      return send(200, { success: true })
+      return send(200, { success: true, name: fixtureMe.name, role: fixtureMe.role })
     }
     if (url.pathname.startsWith('/api/admin/')) {
       if (!isAdmin(req)) return send(401, { error: 'Unauthorized.' })
       if (url.pathname === '/api/admin/logout') {
         res.setHeader('Set-Cookie', 'admin_session=; Path=/; Max-Age=0')
         return send(200, { success: true })
+      }
+      if (url.pathname === '/api/admin/me') return send(200, fixtureMe)
+      if (url.pathname === '/api/admin/staff' && req.method === 'GET') {
+        return send(200, { staff: fixtureStaff, canManageStaff: fixtureMe.canManageStaff })
+      }
+      if (url.pathname === '/api/admin/staff' && req.method === 'POST') {
+        if (!fixtureMe.canManageStaff) return send(403, { error: 'Only the owner can add staff.' })
+        if (body.email !== 'kofi@example.com') return send(404, { error: 'No store account uses that email.' })
+        fixtureStaff.push({ id: 'u-kofi', name: 'Kofi Boateng', email: 'kofi@example.com', role: 'staff', addedAt: null })
+        return send(200, { ok: true, staff: fixtureStaff })
+      }
+      const staffMember = fixtureStaff.find(m => url.pathname === `/api/admin/staff/${m.id}`)
+      if (staffMember && req.method === 'DELETE') {
+        if (!fixtureMe.canManageStaff) return send(403, { error: 'Only the owner can remove staff.' })
+        fixtureStaff = fixtureStaff.filter(m => m.id !== staffMember.id)
+        return send(200, { ok: true, staff: fixtureStaff })
       }
       if (url.pathname === '/api/admin/summary') {
         const list = allOrders()

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { actorLabel } from '@/lib/auth/admin-actor'
 import { assertSameOrigin } from '@/lib/security/same-origin'
 import { normalizeOrderStatus } from '@/lib/order-status'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -52,7 +53,7 @@ export async function POST(
       order_id: id,
       from_status: fromStatus,
       to_status: 'cancelled',
-      changed_by: 'admin',
+      changed_by: actorLabel(auth.actor),
       note: `Manual refund marked${reason ? `: ${reason}` : ''} ($${Number(order.total_amount ?? 0).toFixed(2)})`,
     })
 

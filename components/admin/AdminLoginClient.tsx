@@ -25,7 +25,7 @@ export function AdminLoginClient({
   const [staffPassword, setStaffPassword] = useState('')
   const [showStaffPassword, setShowStaffPassword] = useState(false)
   const [capsLock, setCapsLock] = useState(false)
-  const [mode, setMode] = useState<'staff' | 'supabase'>('staff')
+  const [mode, setMode] = useState<'account' | 'staff' | 'supabase'>('account')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [rateLimited, setRateLimited] = useState(false)
@@ -85,8 +85,17 @@ export function AdminLoginClient({
     window.location.assign('/admin')
   }
 
+  async function handleAccount(e: React.FormEvent) {
+    e.preventDefault()
+    await postLogin({ email: email.trim(), password })
+  }
+
   async function handleStaffPassword(e: React.FormEvent) {
     e.preventDefault()
+    await postLogin({ password: staffPassword })
+  }
+
+  async function postLogin(payload: { email?: string; password: string }) {
     setLoading(true)
     setError('')
     setRateLimited(false)
@@ -94,7 +103,7 @@ export function AdminLoginClient({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ password: staffPassword }),
+      body: JSON.stringify(payload),
     })
     if (res.ok) {
       // Hard navigation guarantees the freshly-set admin_session cookie is sent
@@ -124,7 +133,7 @@ export function AdminLoginClient({
       )
       return
     }
-    setError(typeof data.error === 'string' ? data.error : 'Invalid password.')
+    setError(typeof data.error === 'string' ? data.error : 'Wrong email or password.')
   }
 
   return (
@@ -187,7 +196,7 @@ export function AdminLoginClient({
               Sign in to Seller Center
             </h1>
             <p className="mt-1 text-sm text-earth-600">
-              Use the staff password to open the operations workspace.
+              Use your staff account, or the store password if you&apos;re the owner.
             </p>
 
             {forbidden && (
@@ -235,32 +244,89 @@ export function AdminLoginClient({
               </div>
             )}
 
-            {allowSupabaseAdmin && (
-              <div className="mt-5 flex gap-3 rounded-lg border border-earth-200 bg-earth-50 p-2 text-sm">
-                <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-1.5 transition-colors data-[active=true]:bg-white data-[active=true]:font-semibold data-[active=true]:shadow-sm"
-                  data-active={mode === 'staff'}>
+            <div
+              className="mt-5 flex gap-1 rounded-lg border border-earth-200 bg-earth-50 p-1 text-sm"
+              role="radiogroup"
+              aria-label="Sign-in method"
+            >
+              {(
+                [
+                  ['account', 'Staff account'],
+                  ['staff', 'Store password'],
+                  ...(allowSupabaseAdmin ? ([['supabase', 'Supabase admin']] as const) : []),
+                ] as const
+              ).map(([value, label]) => (
+                <label
+                  key={value}
+                  className="flex min-h-11 flex-1 cursor-pointer items-center justify-center rounded-md px-3 text-center transition-colors duration-150 data-[active=true]:bg-white data-[active=true]:font-semibold data-[active=true]:shadow-sm"
+                  data-active={mode === value}
+                >
                   <input
                     type="radio"
+                    name="admin-sign-in-method"
                     className="sr-only"
-                    checked={mode === 'staff'}
-                    onChange={() => setMode('staff')}
+                    checked={mode === value}
+                    onChange={() => {
+                      setMode(value)
+                      setError('')
+                    }}
                   />
-                  Staff password
+                  {label}
                 </label>
-                <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-1.5 transition-colors data-[active=true]:bg-white data-[active=true]:font-semibold data-[active=true]:shadow-sm"
-                  data-active={mode === 'supabase'}>
-                  <input
-                    type="radio"
-                    className="sr-only"
-                    checked={mode === 'supabase'}
-                    onChange={() => setMode('supabase')}
-                  />
-                  Supabase admin
-                </label>
-              </div>
-            )}
+              ))}
+            </div>
 
-            {allowSupabaseAdmin && mode === 'supabase' ? (
+            {mode === 'account' ? (
+              <form onSubmit={handleAccount} className="mt-6 space-y-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="staff-email" className="form-label">
+                    Email
+                  </label>
+                  <Input
+                    id="staff-email"
+                    type="email"
+                    autoComplete="username"
+                    required
+                    autoFocus
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="staff-account-pass" className="form-label">
+                    Password
+                  </label>
+                  <Input
+                    id="staff-account-pass"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <p className="text-xs text-earth-500">
+                    The same email and password you use to shop on the website.
+                  </p>
+                </div>
+                {error && (
+                  <div
+                    className={`flex items-start gap-2 rounded-lg p-3 text-sm ${
+                      rateLimited ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'
+                    }`}
+                    role="alert"
+                  >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
+                    <span>{error}</span>
+                  </div>
+                )}
+                <Button type="submit" className="w-full" size="lg" disabled={loading}>
+                  {loading ? 'Signing in…' : 'Sign in'}
+                </Button>
+                <p className="text-xs text-earth-500">
+                  New staff: the owner adds you under Staff in the dashboard.
+                </p>
+              </form>
+            ) : allowSupabaseAdmin && mode === 'supabase' ? (
               <form onSubmit={handleSupabase} className="mt-6 space-y-4">
                 <div className="space-y-1.5">
                   <label htmlFor="admin-email" className="form-label">
@@ -309,7 +375,6 @@ export function AdminLoginClient({
                       type={showStaffPassword ? 'text' : 'password'}
                       autoComplete="off"
                       required
-                      autoFocus
                       value={staffPassword}
                       onChange={(e) => setStaffPassword(e.target.value)}
                       className="pr-10"
