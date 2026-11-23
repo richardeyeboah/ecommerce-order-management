@@ -268,6 +268,24 @@ actor SupabaseService {
 
     func saveAddress(_ address: SavedAddress) async throws {
         guard let userId = jwtSubject() else { throw AppError.unauthorized }
+        if address.isDefault {
+            var clearComponents = URLComponents(
+                url: baseURL.appending(path: "rest/v1/addresses"),
+                resolvingAgainstBaseURL: false
+            )!
+            clearComponents.queryItems = [
+                URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+                URLQueryItem(name: "is_default", value: "eq.true"),
+            ]
+            var clearRequest = try makeRequest(
+                url: clearComponents.url!,
+                method: "PATCH",
+                authenticated: true
+            )
+            clearRequest.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+            clearRequest.httpBody = try JSONSerialization.data(withJSONObject: ["is_default": false])
+            _ = try await performRaw(clearRequest)
+        }
         var request = try makeRequest(
             url: baseURL.appending(path: "rest/v1/addresses"),
             method: "POST",

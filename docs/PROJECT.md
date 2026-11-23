@@ -161,7 +161,7 @@ Key tables: `products`, `orders`, `order_items`, `profiles`, `addresses`, `check
 
 - **Developers → Webhooks → Add destination**
 - URL: `https://YOUR-DOMAIN/api/stripe/webhook`
-- Events: `checkout.session.completed`, `payment_intent.succeeded`
+- Event: `payment_intent.succeeded`
 - Copy signing secret → `STRIPE_WEBHOOK_SECRET`
 
 ### Supabase

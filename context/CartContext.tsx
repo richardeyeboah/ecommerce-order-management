@@ -55,9 +55,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const closeCart = useCallback(() => setCartOpen(false), [])
 
   useEffect(() => {
-    const hydrate = () => setItems(parseCart(localStorage.getItem(STORAGE_KEY)))
-    const t = window.setTimeout(hydrate, 0)
-    return () => window.clearTimeout(t)
+    setItems(parseCart(localStorage.getItem(STORAGE_KEY)))
   }, [])
 
   useEffect(() => {

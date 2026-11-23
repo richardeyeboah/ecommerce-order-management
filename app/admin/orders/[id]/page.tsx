@@ -346,6 +346,17 @@ export default async function AdminOrderDetailPage({
             </section>
           )}
 
+          {pm === 'stripe' &&
+            Boolean(order.refunded_at) &&
+            !orderRecord.inventory_restocked_at && (
+              <section className="admin-card">
+                <h2 className="admin-section-title">Inventory recovery</h2>
+                <div className="mt-4">
+                  <RefundButton orderId={order.id} maxAmount={0} restockOnly />
+                </div>
+              </section>
+            )}
+
           {/* Refund — COD / manual. Hidden while unpaid: there is no money to return. */}
           {pm !== 'stripe' && !order.refunded_at && paymentStatus === 'paid' && (
             <section className="admin-card">

@@ -21,11 +21,11 @@ test.describe('Checkout', () => {
     const response = await page.request.get('/api/orders/track?id=test-order')
     expect(response.status()).toBe(400)
     await expect(await response.json()).toMatchObject({
-      error: expect.stringMatching(/order number and email/i),
+      error: expect.stringMatching(/order number.*email/i),
     })
   })
 
-  test('direct order creation API is disabled (use Stripe Checkout)', async ({ page }) => {
+  test('direct order creation API is disabled (use payment checkout)', async ({ page }) => {
     const response = await page.request.post('/api/orders', {
       data: {
         name: 'Test Customer',

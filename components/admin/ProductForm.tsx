@@ -20,6 +20,7 @@ type FormData = {
   image_url: string
   image_urls: string[]
   in_stock: boolean
+  tax_class: '' | 'grocery_exempt' | 'taxable_general' | 'alcohol'
 }
 
 type Props = {
@@ -37,6 +38,7 @@ export function ProductForm({ initialData, productId }: Props) {
     image_url: initialData?.image_url ?? '',
     image_urls: initialData?.image_urls?.filter(Boolean) ?? [],
     in_stock: initialData?.in_stock ?? true,
+    tax_class: initialData?.tax_class ?? '',
   })
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -148,7 +150,7 @@ export function ProductForm({ initialData, productId }: Props) {
     setError('')
     setSaved(false)
 
-    const payload = { ...form, price }
+    const payload = { ...form, price, tax_class: form.tax_class || null }
     const url = productId ? `/api/admin/products/${productId}` : '/api/admin/products'
     const method = productId ? 'PATCH' : 'POST'
 
@@ -257,6 +259,24 @@ export function ProductForm({ initialData, productId }: Props) {
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="form-label" htmlFor="tax_class">Sales tax class</label>
+        <select
+          id="tax_class"
+          className="form-select"
+          value={form.tax_class}
+          onChange={(e) => update('tax_class', e.target.value as FormData['tax_class'])}
+        >
+          <option value="">Automatic from category</option>
+          <option value="grocery_exempt">Grocery food — tax exempt</option>
+          <option value="taxable_general">Taxable merchandise</option>
+          <option value="alcohol">Alcohol — taxable</option>
+        </select>
+        <p className="text-[11px] text-earth-400">
+          Use grocery exempt for food. Taxable classes are currently collected only for Ohio orders.
+        </p>
       </div>
 
       {/* Image */}

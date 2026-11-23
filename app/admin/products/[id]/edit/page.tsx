@@ -47,6 +47,7 @@ export default async function EditProductPage({
           image_url: product.image_url ?? '',
           image_urls: row.image_urls ?? [],
           in_stock: product.in_stock,
+          tax_class: product.tax_class ?? '',
         }}
       />
     </div>

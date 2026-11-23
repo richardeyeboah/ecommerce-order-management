@@ -1,5 +1,15 @@
 import Foundation
 
+enum CheckoutAPIError: LocalizedError {
+    case addressCorrection(SuggestedCheckoutAddress, String)
+
+    var errorDescription: String? {
+        switch self {
+        case .addressCorrection(_, let message): message
+        }
+    }
+}
+
 /// Next.js API client — search, track, signup, mobile checkout.
 struct APIClient {
     static let shared = APIClient()
@@ -88,7 +98,8 @@ struct APIClient {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw AppError.network(String(data: data, encoding: .utf8) ?? "Sign up failed")
+            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw AppError.network(message ?? "Sign up failed.")
         }
     }
 
@@ -149,8 +160,14 @@ struct APIClient {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw AppError.network("No response") }
         guard (200...299).contains(http.statusCode) else {
-            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let error = obj["error"] as? String {
+            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let error = obj["error"] as? String ?? "Checkout failed."
+                if let suggested = obj["suggested"],
+                   JSONSerialization.isValidJSONObject(suggested),
+                   let suggestionData = try? JSONSerialization.data(withJSONObject: suggested),
+                   let address = try? JSONDecoder().decode(SuggestedCheckoutAddress.self, from: suggestionData) {
+                    throw CheckoutAPIError.addressCorrection(address, error)
+                }
                 throw AppError.network(error)
             }
             throw AppError.network("Checkout failed (\(http.statusCode))")
@@ -173,5 +190,38 @@ struct APIClient {
             throw AppError.network("Could not confirm payment")
         }
         return try JSONDecoder().decode(CheckoutStatusResult.self, from: data)
+    }
+
+    func saveCheckoutInfo(
+        fullName: String,
+        phone: String,
+        address1: String,
+        address2: String,
+        city: String,
+        state: String,
+        postalCode: String,
+        country: String,
+        accessToken: String
+    ) async throws {
+        var request = URLRequest(url: baseURL.appending(path: "api/account/save-checkout-info"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(AppConfig.siteURL.absoluteString, forHTTPHeaderField: "Origin")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "fullName": fullName,
+            "phone": phone,
+            "line1": address1,
+            "line2": address2,
+            "city": city,
+            "state": state,
+            "postalCode": postalCode,
+            "country": country,
+        ])
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw AppError.network(message ?? "Could not save checkout details.")
+        }
     }
 }

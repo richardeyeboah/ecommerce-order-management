@@ -92,7 +92,7 @@ export async function createPhoneOrder(
   const productIds = [...qtyById.keys()]
   const { data: products, error: productsError } = await supabaseAdmin
     .from('products')
-    .select('id, name, price, category')
+    .select('id, name, price, category, tax_class')
     .in('id', productIds)
 
   if (productsError) {
@@ -112,6 +112,7 @@ export async function createPhoneOrder(
     quantity: number
     subtotal: number
     category: string
+    tax_class: string | null
   }> = []
 
   let subtotal = 0
@@ -130,6 +131,7 @@ export async function createPhoneOrder(
       quantity,
       subtotal: lineSubtotal,
       category: String(product.category ?? ''),
+      tax_class: typeof product.tax_class === 'string' ? product.tax_class : null,
     })
   }
 
@@ -156,7 +158,11 @@ export async function createPhoneOrder(
   })
 
   const tax = calculateSalesTax(
-    itemRows.map((r) => ({ category: r.category, lineSubtotal: r.subtotal })),
+    itemRows.map((r) => ({
+      category: r.category,
+      lineSubtotal: r.subtotal,
+      taxClass: r.tax_class,
+    })),
     {
       country: needsAddress ? country : 'United States',
       state: needsAddress ? state : 'OH',
@@ -183,6 +189,9 @@ export async function createPhoneOrder(
     subtotal_amount: subtotal,
     shipping_fee: shipping.fee,
     tax_amount: tax.taxAmount,
+    tax_rate: tax.rate,
+    taxable_subtotal: tax.taxableSubtotal,
+    tax_jurisdiction: tax.jurisdictionLabel || null,
     shipping_method: shippingMethod,
     shipping_zone: shipping.zone,
     total_amount: totalAmount,
@@ -256,6 +265,8 @@ export async function createPhoneOrder(
       product_price: r.product_price,
       quantity: r.quantity,
       subtotal: r.subtotal,
+      product_category: r.category,
+      tax_class: r.tax_class,
     }))
   )
 

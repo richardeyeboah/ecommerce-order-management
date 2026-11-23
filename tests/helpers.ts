@@ -20,11 +20,10 @@ export async function seedCartFromFirstShopProduct(page: Page, target = '/cart')
     },
   ]
 
-  await page.goto(target, { waitUntil: 'domcontentloaded' })
-  await page.evaluate((cart) => {
+  await page.addInitScript((cart) => {
     window.localStorage.setItem('lqam-cart', JSON.stringify(cart))
-    window.dispatchEvent(new StorageEvent('storage', { key: 'lqam-cart' }))
   }, seededCart)
+  await page.goto(target, { waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => {
     const raw = window.localStorage.getItem('lqam-cart')
     if (!raw) return false
@@ -34,10 +33,13 @@ export async function seedCartFromFirstShopProduct(page: Page, target = '/cart')
       return false
     }
   })
-  await page.reload({ waitUntil: 'domcontentloaded' })
 }
 
 /** Cart icon link shows count badge (not the desktop “Cart” text link). */
 export function cartBadge(page: Page, count: string | RegExp) {
-  return page.locator('a[href="/cart"]:has(svg)').locator('span').filter({ hasText: count })
+  return page
+    .locator('header button')
+    .filter({ hasText: /^Cart/ })
+    .locator('span')
+    .filter({ hasText: count })
 }

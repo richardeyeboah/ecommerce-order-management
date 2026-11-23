@@ -11,7 +11,7 @@ test.describe('Homepage', () => {
 
   test('shows hero heading', async ({ page }) => {
     await expect(
-      page.getByRole('heading', { name: /African.*Caribbean groceries/i })
+      page.getByRole('heading', { name: /Ghana.*Caribbean groceries/i })
     ).toBeVisible()
   })
 
@@ -26,8 +26,8 @@ test.describe('Homepage', () => {
     ).toBeVisible()
   })
 
-  test('shows Trending this week section', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /Trending this week/i })).toBeVisible()
+  test('shows shopping options', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: /Three ways to shop Kintampo/i })).toBeVisible()
   })
 
   test('Shop all products links to /shop', async ({ page }) => {

@@ -43,6 +43,9 @@ export const TAXABLE_CATEGORY_KEYS = new Set(
   ].map(normalizeCategoryKey)
 )
 
+export const PRODUCT_TAX_CLASSES = ['grocery_exempt', 'taxable_general', 'alcohol'] as const
+export type ProductTaxClass = (typeof PRODUCT_TAX_CLASSES)[number]
+
 export function normalizeCategoryKey(category: string): string {
   return category
     .trim()
@@ -51,7 +54,13 @@ export function normalizeCategoryKey(category: string): string {
     .replace(/\s+/g, ' ')
 }
 
-export function isCategoryTaxable(category: string): boolean {
+export function isCategoryTaxable(
+  category: string,
+  taxClass?: ProductTaxClass | string | null
+): boolean {
+  if (taxClass === 'grocery_exempt') return false
+  if (taxClass === 'taxable_general' || taxClass === 'alcohol') return true
+
   const key = normalizeCategoryKey(category)
   if (!key) return false
   if (TAXABLE_CATEGORY_KEYS.has(key)) return true
@@ -107,12 +116,13 @@ export function getStoreSalesTaxRate(): number {
 export type TaxLineInput = {
   category: string
   lineSubtotal: number
+  taxClass?: ProductTaxClass | string | null
 }
 
 export type TaxDestination = 'pickup' | 'us' | 'international' | 'unknown'
 
 export type SalesTaxQuote = {
-  /** True when sales tax is collected (any US address, pickup, or US before state entered). */
+  /** True when sales tax is collected for an Ohio destination or store pickup. */
   applies: boolean
   destination: TaxDestination
   rate: number
@@ -122,9 +132,8 @@ export type SalesTaxQuote = {
 }
 
 /**
- * Store is in Columbus, OH — taxable merchandise uses Ohio category rules + store rate
- * for all US delivery and pickup. Grocery categories stay exempt (see isCategoryTaxable).
- * Out-of-state customers are not exempt from tax on non-food items.
+ * Until additional nexus states are configured, the store collects tax only for
+ * Ohio pickup/delivery/shipping. Grocery categories remain exempt everywhere.
  */
 export function resolveTaxDestination(input: {
   country?: string
@@ -148,7 +157,9 @@ export function shouldApplyStoreSalesTax(input: {
   shippingMethod?: string
 }): boolean {
   const dest = resolveTaxDestination(input)
-  return dest === 'pickup' || dest === 'us' || dest === 'unknown'
+  if (dest === 'pickup') return true
+  if (dest !== 'us') return false
+  return normalizeShippingRegion(input.state) === 'OH'
 }
 
 export function calculateSalesTax(
@@ -166,19 +177,58 @@ export function calculateSalesTax(
   const jurisdictionLabel =
     destination === 'pickup'
       ? `Store pickup · Columbus, OH (${pct}%)`
-      : destination === 'international'
+      : !applies
         ? ''
-        : `Columbus, OH rate (${pct}%)`
+        : `Ohio (${pct}%)`
 
   let taxableSubtotal = 0
   for (const line of lines) {
     if (line.lineSubtotal <= 0) continue
-    if (isCategoryTaxable(line.category)) {
+    if (isCategoryTaxable(line.category, line.taxClass)) {
       taxableSubtotal += line.lineSubtotal
     }
   }
   taxableSubtotal = Math.round(taxableSubtotal * 100) / 100
 
+  const taxAmount = applies ? Math.round(taxableSubtotal * rate * 100) / 100 : 0
+
+  return { applies, destination, rate, taxableSubtotal, taxAmount, jurisdictionLabel }
+}
+
+/**
+ * Reproduces quotes created before the Ohio-only nexus change. Use only for
+ * outstanding checkout snapshots that do not contain a frozen tax quote.
+ */
+export function calculateLegacySalesTax(
+  lines: TaxLineInput[],
+  dest: {
+    country?: string
+    state?: string
+    shippingMethod?: string
+  }
+): SalesTaxQuote {
+  const rate = getStoreSalesTaxRate()
+  const destination = resolveTaxDestination(dest)
+  const applies =
+    destination === 'pickup' || destination === 'us' || destination === 'unknown'
+  const pct = (rate * 100).toFixed(2).replace(/\.?0+$/, '')
+  const jurisdictionLabel =
+    destination === 'pickup'
+      ? `Store pickup · Columbus, OH (${pct}%)`
+      : destination === 'international'
+        ? ''
+        : `Columbus, OH rate (${pct}%)`
+
+  const taxableSubtotal =
+    Math.round(
+      lines.reduce(
+        (sum, line) =>
+          line.lineSubtotal > 0 && isCategoryTaxable(line.category)
+            ? sum + line.lineSubtotal
+            : sum,
+        0
+      ) * 100
+    ) / 100
   const taxAmount = applies ? Math.round(taxableSubtotal * rate * 100) / 100 : 0
 
   return { applies, destination, rate, taxableSubtotal, taxAmount, jurisdictionLabel }

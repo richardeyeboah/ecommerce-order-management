@@ -33,12 +33,10 @@ export async function POST(req: NextRequest) {
     try {
       await fulfillOrderFromStripeSession(session.id)
     } catch (e) {
-      console.error('[stripe] fulfillment failed', e)
+      console.error('[stripe] legacy session fulfillment failed', e)
       return NextResponse.json({ error: 'Fulfillment failed' }, { status: 500 })
     }
-  }
-
-  if (event.type === 'payment_intent.succeeded') {
+  } else if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object as Stripe.PaymentIntent
     if (pi.metadata?.checkout_snapshot_id) {
       try {

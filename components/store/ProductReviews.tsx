@@ -102,8 +102,15 @@ export function ProductReviews({ productId }: { productId: string }) {
     setSubmitting(true)
     setSubmitError('')
     const supabase = createClient()
+    const { data: authData } = await supabase.auth.getUser()
+    if (!authData.user) {
+      setSubmitting(false)
+      setSubmitError('Sign in to submit a product review.')
+      return
+    }
     const { error } = await supabase.from('product_reviews').insert({
       product_id: productId,
+      user_id: authData.user.id,
       rating,
       comment: comment.trim() || null,
       reviewer_name: name.trim(),

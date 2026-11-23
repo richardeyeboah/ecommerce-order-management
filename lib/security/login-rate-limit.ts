@@ -10,14 +10,16 @@ function isTruthyEnv(name: string | undefined): boolean {
 }
 
 /**
- * Admin login lockouts are paused unless ADMIN_ENFORCE_LOGIN_RATE_LIMIT=1.
- * Optional: ADMIN_DISABLE_LOGIN_RATE_LIMIT=1 also pauses (explicit).
+ * Admin login lockouts are enabled by default. The disable flag is accepted
+ * only outside production for local troubleshooting.
  */
 export function isAdminLoginRateLimitDisabled(): boolean {
   if (isTruthyEnv(process.env.ADMIN_ENFORCE_LOGIN_RATE_LIMIT)) return false
-  if (isTruthyEnv(process.env.ADMIN_DISABLE_LOGIN_RATE_LIMIT)) return true
-  // HOLD: paused by default until you set ADMIN_ENFORCE_LOGIN_RATE_LIMIT=1 on Vercel.
-  return true
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    isTruthyEnv(process.env.ADMIN_DISABLE_LOGIN_RATE_LIMIT)
+  ) return true
+  return false
 }
 
 interface RateEntry {

@@ -73,7 +73,7 @@ const nextConfig: NextConfig = {
   images: {
     // Vercel Image Optimization is quota-gated (402 OPTIMIZED_IMAGE_REQUEST_PAYMENT_REQUIRED).
     unoptimized: true,
-    qualities: [60, 75, 90],
+    qualities: [50, 60, 70, 75, 90],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     imageSizes: [64, 96, 128, 256, 384, 640],
     remotePatterns: [

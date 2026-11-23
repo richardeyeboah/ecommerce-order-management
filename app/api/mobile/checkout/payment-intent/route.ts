@@ -312,7 +312,17 @@ export async function POST(req: NextRequest) {
     }
 
     const payload: CheckoutSnapshotPayload = {
-      items: sanitizedItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      items: sanitizedItems.map((item) => {
+        const product = productMap.get(item.productId)!
+        return {
+          productId: item.productId,
+          quantity: item.quantity,
+          productName: product.name,
+          unitPrice: product.price,
+          category: product.category,
+          taxClass: product.tax_class ?? null,
+        }
+      }),
       customer_name: String(name).trim(),
       customer_phone: phoneTrim,
       address_line: addressLine,
@@ -327,6 +337,13 @@ export async function POST(req: NextRequest) {
       substitution_pref: substitutionPref,
       pickup_slot: pickupSlot,
       tip_amount: tipForTotals,
+      quoted_subtotal: subtotal,
+      quoted_shipping_fee: shipping.fee,
+      quoted_tax_amount: tax.taxAmount,
+      quoted_tax_rate: tax.rate,
+      quoted_taxable_subtotal: tax.taxableSubtotal,
+      quoted_tax_jurisdiction: tax.jurisdictionLabel,
+      quoted_total: totals.total,
     }
 
     const { data: snap, error: snapErr } = await supabaseAdmin
@@ -347,17 +364,20 @@ export async function POST(req: NextRequest) {
     }
 
     const stripe = getStripe()
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountCents,
-      currency: 'usd',
-      payment_method_types: [...CHECKOUT_STRIPE_PAYMENT_METHOD_TYPES],
-      metadata: {
-        user_id: snapshotUserId,
-        checkout_mode: checkoutMode,
-        checkout_snapshot_id: snap.id,
+    const paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount: amountCents,
+        currency: 'usd',
+        payment_method_types: [...CHECKOUT_STRIPE_PAYMENT_METHOD_TYPES],
+        metadata: {
+          user_id: snapshotUserId,
+          checkout_mode: checkoutMode,
+          checkout_snapshot_id: snap.id,
+        },
+        receipt_email: accountEmail,
       },
-      receipt_email: accountEmail,
-    })
+      { idempotencyKey: `checkout:${snap.id}` }
+    )
 
     if (!paymentIntent.client_secret) {
       await supabaseAdmin.from('checkout_snapshots').delete().eq('id', snap.id)
@@ -377,6 +397,9 @@ export async function POST(req: NextRequest) {
       shippingFee: shipping.fee,
       taxAmount: tax.taxAmount,
       taxApplies: tax.applies,
+      taxRate: tax.rate,
+      taxableSubtotal: tax.taxableSubtotal,
+      taxJurisdiction: tax.jurisdictionLabel,
       total: totals.total,
     })
   } catch (err) {

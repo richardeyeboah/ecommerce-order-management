@@ -8,6 +8,7 @@ import { getStoreSalesTaxRate } from '@/lib/tax/sales-tax'
 import {
   computeShortfallRefund,
   describeShortLines,
+  resolveRefundTaxRate,
   type ShortfallLineInput,
 } from '@/lib/orders/partial-refund'
 import { sendShortfallEmail } from '@/lib/email/send-order-emails'
@@ -106,10 +107,16 @@ export async function POST(
           orderedQuantity: ordered,
           previousFulfilledQuantity: previousFulfilled,
           nextFulfilledQuantity: requestedByItem.get(item.id) ?? previousFulfilled,
-          category:
-            typeof item.product_id === 'string'
-              ? (categoryByProduct.get(item.product_id) ?? '')
-              : '',
+          category: String(
+            (item as Record<string, unknown>).product_category ??
+              (typeof item.product_id === 'string'
+                ? (categoryByProduct.get(item.product_id) ?? '')
+                : '')
+          ),
+          taxClass:
+            typeof (item as Record<string, unknown>).tax_class === 'string'
+              ? String((item as Record<string, unknown>).tax_class)
+              : null,
         }
       })
 
@@ -120,11 +127,16 @@ export async function POST(
     const orderTotal = Number(order.total_amount ?? 0)
     const alreadyRefunded = Number(order.refund_amount ?? 0)
     const maxRefundable = Math.max(0, Math.round((orderTotal - alreadyRefunded) * 100) / 100)
+    const orderTaxAmount = Number(orderRecord.tax_amount ?? 0)
 
     const quote = computeShortfallRefund({
       lines,
-      taxRate: getStoreSalesTaxRate(),
-      orderTaxAmount: Number(orderRecord.tax_amount ?? 0),
+      taxRate: resolveRefundTaxRate(
+        orderRecord.tax_rate,
+        orderTaxAmount,
+        getStoreSalesTaxRate()
+      ),
+      orderTaxAmount,
       maxRefundable,
     })
 

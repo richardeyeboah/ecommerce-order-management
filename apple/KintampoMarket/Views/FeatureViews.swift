@@ -32,11 +32,15 @@ struct CheckoutView: View {
     @AppStorage("kintampo-pending-payment") private var pendingPaymentID = ""
     @AppStorage("kintampo-pending-cart") private var pendingCart = Data()
     @State private var savedAddresses: [SavedAddress] = []
+    @State private var suggestedAddress: SuggestedCheckoutAddress?
 
     private var trimmedEmail: String { email.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var receiptEmail: String {
+        auth.isSignedIn ? auth.email.trimmingCharacters(in: .whitespacesAndNewlines) : trimmedEmail
+    }
     private var emailValid: Bool {
-        let parts = trimmedEmail.split(separator: "@")
-        return parts.count == 2 && parts[1].contains(".") && !trimmedEmail.contains(" ")
+        let parts = receiptEmail.split(separator: "@")
+        return parts.count == 2 && parts[1].contains(".") && !receiptEmail.contains(" ")
     }
     private var phoneDigits: String { phone.filter(\.isNumber) }
     private var addressValid: Bool {
@@ -64,7 +68,7 @@ struct CheckoutView: View {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(Brand.success).font(.title2)
                         Text(orderDoneMessage).font(.headline)
                     }
-                    Text("A receipt was emailed to \(trimmedEmail). Track it anytime from Account → Orders.")
+                    Text("A receipt was emailed to \(receiptEmail). Track it anytime from Account → Orders.")
                         .font(.caption)
                         .foregroundStyle(Brand.inkMuted)
                     Button("Done") { dismiss() }
@@ -79,6 +83,7 @@ struct CheckoutView: View {
                         .textInputAutocapitalization(.words)
                         #endif
                     TextField("Email", text: $email)
+                        .disabled(auth.isSignedIn)
                         #if os(iOS)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.emailAddress)
@@ -142,6 +147,24 @@ struct CheckoutView: View {
                             .keyboardType(.numberPad)
                             .textContentType(.postalCode)
                             #endif
+                        Text("Native checkout currently supports US addresses only.")
+                            .font(.caption)
+                            .foregroundStyle(Brand.inkMuted)
+                    }
+                }
+
+                if let suggestion = suggestedAddress {
+                    Section("Suggested shipping address") {
+                        Text("\(suggestion.line1), \(suggestion.city), \(suggestion.state) \(suggestion.postalCode)")
+                            .font(.subheadline)
+                        Button("Use suggested address") {
+                            address1 = suggestion.line1
+                            city = suggestion.city
+                            state = suggestion.state
+                            postalCode = suggestion.postalCode
+                            suggestedAddress = nil
+                            errorMessage = nil
+                        }
                     }
                 }
 
@@ -284,6 +307,22 @@ struct CheckoutView: View {
         pendingCart = Data()
         showPaySheet = false
         orderDoneMessage = message
+        if auth.isSignedIn {
+            Task {
+                guard let token = try? await auth.validAccessToken() else { return }
+                try? await APIClient.shared.saveCheckoutInfo(
+                    fullName: name,
+                    phone: phone,
+                    address1: shipping == .pickup ? "" : address1,
+                    address2: shipping == .pickup ? "" : address2,
+                    city: shipping == .pickup ? "" : city,
+                    state: shipping == .pickup ? "" : state,
+                    postalCode: shipping == .pickup ? "" : postalCode,
+                    country: "United States",
+                    accessToken: token
+                )
+            }
+        }
     }
 
     private func startPayment() async {
@@ -307,7 +346,7 @@ struct CheckoutView: View {
             let checkoutItems = cart.items
             let result = try await APIClient.shared.createPaymentIntent(
                 name: name.trimmingCharacters(in: .whitespaces),
-                email: trimmedEmail,
+                email: receiptEmail,
                 phone: phone.trimmingCharacters(in: .whitespaces),
                 address1: address1,
                 address2: address2,
@@ -327,6 +366,9 @@ struct CheckoutView: View {
             pendingCart = try JSONEncoder().encode(checkoutItems)
             pendingPaymentID = result.intentID
             showPaySheet = true
+        } catch let CheckoutAPIError.addressCorrection(suggestion, message) {
+            suggestedAddress = suggestion
+            errorMessage = message
         } catch {
             errorMessage = error.localizedDescription
         }

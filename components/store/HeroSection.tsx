@@ -38,6 +38,7 @@ export function HeroSection({
             alt=""
             fill
             quality={50}
+            loading="eager"
             sizes="100vw"
             className="object-cover object-[center_35%] opacity-[0.16]"
           />
