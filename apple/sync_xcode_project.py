@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "KintampoMarket"
+MGR = ROOT / "KintampoManager"
 PROJ = ROOT / "KintampoMarket.xcodeproj" / "project.pbxproj"
 
 
@@ -16,8 +17,27 @@ def uid(seed: str) -> str:
 
 
 def collect_swift() -> list[Path]:
-    files = sorted(SRC.rglob("*.swift"))
+    files = sorted(SRC.rglob("*.swift")) + sorted(MGR.rglob("*.swift"))
     return [p for p in files if p.is_file()]
+
+
+# Kintampo Manager (staff app) compiles its own folder plus these shared customer-app
+# folders/files. It never gets the shopping screens, and the customer app never gets
+# anything from KintampoManager/.
+MANAGER_SHARED_DIRS = ("KintampoMarket/Models/", "KintampoMarket/Services/", "KintampoMarket/Theme/")
+MANAGER_SHARED_FILES = {
+    "KintampoMarket/Views/Components/OrderStatusViews.swift",
+    "KintampoMarket/Views/Components/Skeletons.swift",
+}
+MANAGER_EXCLUDE = {"KintampoMarket/Services/PushRegistration.swift"}
+
+
+def in_manager(r: str) -> bool:
+    if r.startswith("KintampoManager/"):
+        return True
+    if r in MANAGER_EXCLUDE:
+        return False
+    return r in MANAGER_SHARED_FILES or r.startswith(MANAGER_SHARED_DIRS)
 
 
 def rel(p: Path) -> str:
@@ -54,11 +74,16 @@ def main() -> None:
     build_ios: list[tuple[str, str]] = []
     build_mac: list[tuple[str, str]] = []
     build_watch: list[tuple[str, str]] = []
+    build_mgr: list[tuple[str, str]] = []
 
     for path in swifts:
         r = rel(path)
         fr = uid(f"file:{r}")
         file_refs[r] = fr
+        if in_manager(r):
+            build_mgr.append((uid(f"mgr:{r}"), fr))
+        if r.startswith("KintampoManager/"):
+            continue
         bi = uid(f"ios:{r}")
         bm = uid(f"mac:{r}")
         build_ios.append((bi, fr))
@@ -80,6 +105,11 @@ def main() -> None:
     product_ios = uid("product:ios")
     product_mac = uid("product:mac")
     product_watch = uid("product:watch")
+    product_mgr = uid("product:mgr")
+    info_mgr = uid("info:mgr")
+    mgr_assets_ref = uid("assets:catalog:mgr")
+    assets_build_mgr = uid("assets:build:mgr")
+    privacy_build_mgr = uid("privacy:build:mgr")
     assets_ref = uid("assets:catalog")
     privacy_ref = uid("privacy:manifest")
     assets_build_ios = uid("assets:build:ios")
@@ -109,6 +139,11 @@ def main() -> None:
     for bw, fr in build_watch:
         name = next(k for k, v in file_refs.items() if v == fr)
         lines.append(f"\t\t{bw} /* {Path(name).name} in Sources */ = {{isa = PBXBuildFile; fileRef = {fr} /* {Path(name).name} */; }};")
+    for bg, fr in build_mgr:
+        name = next(k for k, v in file_refs.items() if v == fr)
+        lines.append(f"\t\t{bg} /* {Path(name).name} in Sources */ = {{isa = PBXBuildFile; fileRef = {fr} /* {Path(name).name} */; }};")
+    lines.append(f"\t\t{assets_build_mgr} /* Assets.xcassets in Resources */ = {{isa = PBXBuildFile; fileRef = {mgr_assets_ref} /* Assets.xcassets */; }};")
+    lines.append(f"\t\t{privacy_build_mgr} /* PrivacyInfo.xcprivacy in Resources */ = {{isa = PBXBuildFile; fileRef = {privacy_ref} /* PrivacyInfo.xcprivacy */; }};")
     lines.append(f"\t\t{assets_build_ios} /* Assets.xcassets in Resources */ = {{isa = PBXBuildFile; fileRef = {assets_ref} /* Assets.xcassets */; }};")
     lines.append(f"\t\t{privacy_build_ios} /* PrivacyInfo.xcprivacy in Resources */ = {{isa = PBXBuildFile; fileRef = {privacy_ref} /* PrivacyInfo.xcprivacy */; }};")
     lines.append(f"\t\t{assets_build_mac} /* Assets.xcassets in Resources */ = {{isa = PBXBuildFile; fileRef = {assets_ref} /* Assets.xcassets */; }};")
@@ -129,6 +164,9 @@ def main() -> None:
     lines.append(f"\t\t{privacy_ref} /* PrivacyInfo.xcprivacy */ = {{isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = \"<group>\"; }};")
     lines.append(f"\t\t{product_ios} /* KintampoMarket.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KintampoMarket.app; sourceTree = BUILT_PRODUCTS_DIR; }};")
     lines.append(f"\t\t{product_mac} /* KintampoMarketMac.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KintampoMarketMac.app; sourceTree = BUILT_PRODUCTS_DIR; }};")
+    lines.append(f"\t\t{info_mgr} /* Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = \"<group>\"; }};")
+    lines.append(f"\t\t{mgr_assets_ref} /* Assets.xcassets */ = {{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = \"<group>\"; }};")
+    lines.append(f"\t\t{product_mgr} /* KintampoManager.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KintampoManager.app; sourceTree = BUILT_PRODUCTS_DIR; }};")
     lines.append(f"\t\t{product_watch} /* KintampoMarketWatch.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KintampoMarketWatch.app; sourceTree = BUILT_PRODUCTS_DIR; }};")
     lines.append("/* End PBXFileReference section */\n")
 
@@ -141,11 +179,13 @@ def main() -> None:
     products_group = uid("group:products")
     km_group = uid("group:km")
     watch_info_group = uid("group:watchinfo")
+    mgr_group = uid("group:mgr")
+    mgr_resources_group = uid("group:mgr:resources")
 
     lines.append("/* Begin PBXGroup section */")
     resources_group = uid("group:resources")
-    lines.append(f"\t\t{root_group} = {{isa = PBXGroup; children = ({km_group}, {watch_info_group}, {products_group}, {config_ref}); sourceTree = \"<group>\"; }};")
-    lines.append(f"\t\t{products_group} /* Products */ = {{isa = PBXGroup; children = ({product_ios}, {product_mac}, {product_watch}); name = Products; sourceTree = \"<group>\"; }};")
+    lines.append(f"\t\t{root_group} = {{isa = PBXGroup; children = ({km_group}, {mgr_group}, {watch_info_group}, {products_group}, {config_ref}); sourceTree = \"<group>\"; }};")
+    lines.append(f"\t\t{products_group} /* Products */ = {{isa = PBXGroup; children = ({product_ios}, {product_mac}, {product_watch}, {product_mgr}); name = Products; sourceTree = \"<group>\"; }};")
     lines.append(f"\t\t{watch_info_group} /* KintampoMarketWatch */ = {{isa = PBXGroup; children = ({info_watch}); path = KintampoMarketWatch; sourceTree = \"<group>\"; }};")
     lines.append(f"\t\t{resources_group} /* Resources */ = {{isa = PBXGroup; children = ({assets_ref}); path = Resources; sourceTree = \"<group>\"; }};")
 
@@ -190,10 +230,27 @@ def main() -> None:
                 f"\t\t{group_ids[g]} /* {parts[2]} */ = {{isa = PBXGroup; children = ({', '.join(kids)}); path = {parts[2]}; sourceTree = \"<group>\"; }};"
             )
 
+    # Kintampo Manager folder: one level of subfolders (Models, Services, Views) + Resources.
+    mgr_children = [group_ids[g] for g in sorted(groups) if Path(g).parts[0] == "KintampoManager" and len(Path(g).parts) == 2]
+    mgr_children += [file_refs[r] for r in sorted(groups.get("KintampoManager", []))]
+    mgr_children += [info_mgr, mgr_resources_group]
+    lines.append(
+        f"\t\t{mgr_group} /* KintampoManager */ = {{isa = PBXGroup; children = ({', '.join(mgr_children)}); path = KintampoManager; sourceTree = \"<group>\"; }};"
+    )
+    lines.append(f"\t\t{mgr_resources_group} /* Resources */ = {{isa = PBXGroup; children = ({mgr_assets_ref}); path = Resources; sourceTree = \"<group>\"; }};")
+    for g in sorted(groups):
+        parts = Path(g).parts
+        if parts[0] == "KintampoManager" and len(parts) == 2:
+            kids = [file_refs[f] for f in sorted(groups[g])]
+            lines.append(
+                f"\t\t{group_ids[g]} /* {parts[1]} */ = {{isa = PBXGroup; children = ({', '.join(kids)}); path = {parts[1]}; sourceTree = \"<group>\"; }};"
+            )
+
     lines.append("/* End PBXGroup section */\n")
 
     # Targets
     t_ios, t_mac, t_watch = uid("target:ios"), uid("target:mac"), uid("target:watch")
+    t_mgr, s_mgr, f_mgr, r_mgr, c_mgr = uid("target:mgr"), uid("sources:mgr"), uid("fw:mgr"), uid("res:mgr"), uid("cfglist:mgr")
     s_ios, s_mac, s_watch = uid("sources:ios"), uid("sources:mac"), uid("sources:watch")
     f_ios, f_mac, f_watch = uid("fw:ios"), uid("fw:mac"), uid("fw:watch")
     r_ios, r_mac, r_watch = uid("res:ios"), uid("res:mac"), uid("res:watch")
@@ -238,6 +295,17 @@ def main() -> None:
 \t\t\tproductReference = {product_watch};
 \t\t\tproductType = \"com.apple.product-type.application\";
 \t\t}};""")
+    lines.append(f"""\t\t{t_mgr} /* KintampoManager */ = {{
+\t\t\tisa = PBXNativeTarget;
+\t\t\tbuildConfigurationList = {c_mgr};
+\t\t\tbuildPhases = ({s_mgr}, {f_mgr}, {r_mgr});
+\t\t\tbuildRules = ();
+\t\t\tdependencies = ();
+\t\t\tname = KintampoManager;
+\t\t\tproductName = KintampoManager;
+\t\t\tproductReference = {product_mgr};
+\t\t\tproductType = \"com.apple.product-type.application\";
+\t\t}};""")
     lines.append("/* End PBXNativeTarget section */\n")
 
     lines.append("/* Begin PBXProject section */")
@@ -254,7 +322,7 @@ def main() -> None:
 \t\t\tprojectDirPath = \"\";
 \t\t\tprojectRoot = \"\";
 \t\t\tpackageReferences = ({stripe_package});
-\t\t\ttargets = ({t_ios}, {t_mac}, {t_watch});
+\t\t\ttargets = ({t_ios}, {t_mgr}, {t_mac}, {t_watch});
 \t\t}};""")
     lines.append("/* End PBXProject section */\n")
 
@@ -262,14 +330,16 @@ def main() -> None:
     lines.append(f"\t\t{s_ios} = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({', '.join(b for b,_ in build_ios)}); runOnlyForDeploymentPostprocessing = 0; }};")
     lines.append(f"\t\t{s_mac} = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({', '.join(b for b,_ in build_mac)}); runOnlyForDeploymentPostprocessing = 0; }};")
     lines.append(f"\t\t{s_watch} = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({', '.join(b for b,_ in build_watch)}); runOnlyForDeploymentPostprocessing = 0; }};")
+    lines.append(f"\t\t{s_mgr} = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({', '.join(b for b,_ in build_mgr)}); runOnlyForDeploymentPostprocessing = 0; }};")
     lines.append("/* End PBXSourcesBuildPhase section */\n")
 
-    for fid in (f_ios, f_mac, f_watch):
+    for fid in (f_ios, f_mac, f_watch, f_mgr):
         frameworks = stripe_build if fid == f_ios else ""
         lines.append(f"\t\t{fid} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({frameworks}); runOnlyForDeploymentPostprocessing = 0; }};")
     lines.append(f"\t\t{r_ios} = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({assets_build_ios}, {privacy_build_ios}); runOnlyForDeploymentPostprocessing = 0; }};")
     lines.append(f"\t\t{r_mac} = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({assets_build_mac}, {privacy_build_mac}); runOnlyForDeploymentPostprocessing = 0; }};")
     lines.append(f"\t\t{r_watch} = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};")
+    lines.append(f"\t\t{r_mgr} = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({assets_build_mgr}, {privacy_build_mgr}); runOnlyForDeploymentPostprocessing = 0; }};")
 
     lines.append(f"\t\t{dep} = {{isa = PBXTargetDependency; target = {t_ios}; targetProxy = {proxy}; }};")
     lines.append(f"\t\t{proxy} = {{isa = PBXContainerItemProxy; containerPortal = {proj}; proxyType = 1; remoteGlobalIDString = {t_ios}; remoteInfo = KintampoMarket; }};")
@@ -290,6 +360,8 @@ def main() -> None:
     d_ios_d, d_ios_r = uid("bc:ios:Debug"), uid("bc:ios:Release")
     d_mac_d, d_mac_r = uid("bc:mac:Debug"), uid("bc:mac:Release")
     d_watch_d, d_watch_r = uid("bc:watch:Debug"), uid("bc:watch:Release")
+    d_mgr_d, d_mgr_r = uid("bc:mgr:Debug"), uid("bc:mgr:Release")
+    mgr_extra = "\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;\n\t\t\t\tSUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\";\n\t\t\t\tTARGETED_DEVICE_FAMILY = \"1,2\";"
 
     lines.append("/* Begin XCBuildConfiguration section */")
     lines.append(f"""\t\t{d_proj_d} /* Debug */ = {{
@@ -343,6 +415,8 @@ def main() -> None:
             "\t\t\t\tWATCHOS_DEPLOYMENT_TARGET = 10.0;\n\t\t\t\tTARGETED_DEVICE_FAMILY = 4;\n\t\t\t\tSKIP_INSTALL = YES;\n\t\t\t\tWK_COMPANION_APP_BUNDLE_IDENTIFIER = com.kintampoafricanmarket.app;")),
         (d_watch_r, "Release", target_settings("KintampoMarketWatch/Info.plist", "com.kintampoafricanmarket.app.watchkitapp", "KintampoMarketWatch", "watchos",
             "\t\t\t\tWATCHOS_DEPLOYMENT_TARGET = 10.0;\n\t\t\t\tTARGETED_DEVICE_FAMILY = 4;\n\t\t\t\tSKIP_INSTALL = YES;\n\t\t\t\tWK_COMPANION_APP_BUNDLE_IDENTIFIER = com.kintampoafricanmarket.app;")),
+        (d_mgr_d, "Debug", target_settings("KintampoManager/Info.plist", "com.kintampoafricanmarket.manager", "KintampoManager", "iphoneos", mgr_extra)),
+        (d_mgr_r, "Release", target_settings("KintampoManager/Info.plist", "com.kintampoafricanmarket.manager", "KintampoManager", "iphoneos", mgr_extra)),
     ]:
         lines.append(f"\t\t{cid} /* {name} */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {config_ref}; buildSettings = {{{settings}\n\t\t\t}}; name = {name}; }};")
 
@@ -352,6 +426,7 @@ def main() -> None:
     lines.append(f"\t\t{c_proj} = {{isa = XCConfigurationList; buildConfigurations = ({d_proj_d}, {d_proj_r}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};")
     lines.append(f"\t\t{c_ios} = {{isa = XCConfigurationList; buildConfigurations = ({d_ios_d}, {d_ios_r}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};")
     lines.append(f"\t\t{c_mac} = {{isa = XCConfigurationList; buildConfigurations = ({d_mac_d}, {d_mac_r}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};")
+    lines.append(f"\t\t{c_mgr} = {{isa = XCConfigurationList; buildConfigurations = ({d_mgr_d}, {d_mgr_r}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};")
     lines.append(f"\t\t{c_watch} = {{isa = XCConfigurationList; buildConfigurations = ({d_watch_d}, {d_watch_r}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};")
     lines.append("/* End XCConfigurationList section */")
 

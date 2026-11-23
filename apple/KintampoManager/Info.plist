@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Kintampo Manager</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LOCAL_SITE_URL</key>
+	<string>$(LOCAL_SITE_URL)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>MERCHANT_ORDER_EMAIL</key>
+	<string>$(MERCHANT_ORDER_EMAIL)</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>SHIP_FROM_CITY</key>
+	<string>$(SHIP_FROM_CITY)</string>
+	<key>SHIP_FROM_COUNTRY</key>
+	<string>$(SHIP_FROM_COUNTRY)</string>
+	<key>SHIP_FROM_NAME</key>
+	<string>$(SHIP_FROM_NAME)</string>
+	<key>SHIP_FROM_STATE</key>
+	<string>$(SHIP_FROM_STATE)</string>
+	<key>SITE_URL</key>
+	<string>$(SITE_URL)</string>
+	<key>STORE_PHONE</key>
+	<string>$(STORE_PHONE)</string>
+	<key>SUPABASE_ANON_KEY</key>
+	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>SUPABASE_URL</key>
+	<string>$(SUPABASE_URL)</string>
+	<key>SUPPORT_EMAIL</key>
+	<string>$(SUPPORT_EMAIL)</string>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>

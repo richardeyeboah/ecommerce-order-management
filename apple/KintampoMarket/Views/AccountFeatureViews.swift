@@ -504,46 +504,6 @@ struct OrdersView: View {
     }
 }
 
-enum OrderStatusStyle {
-    static func color(for status: String) -> Color {
-        switch status.lowercased() {
-        case "delivered", "picked_up", "completed", "complete": return Brand.success
-        case "shipped", "out_for_delivery", "ready_for_pickup", "ready": return Brand.gold
-        case "cancelled", "canceled", "refunded", "failed": return Brand.inkMuted
-        default: return Brand.red
-        }
-    }
-
-    static func label(_ status: String) -> String {
-        status.replacingOccurrences(of: "_", with: " ").capitalized
-    }
-
-    static func dateLabel(_ iso: String) -> String {
-        let parser = ISO8601DateFormatter()
-        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = parser.date(from: iso) ?? {
-            parser.formatOptions = [.withInternetDateTime]
-            return parser.date(from: iso)
-        }()
-        guard let date else { return iso.prefix(10).description }
-        return date.formatted(date: .abbreviated, time: .shortened)
-    }
-}
-
-struct OrderStatusBadge: View {
-    let status: String
-    var body: some View {
-        let color = OrderStatusStyle.color(for: status)
-        Text(OrderStatusStyle.label(status))
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(color.opacity(0.12))
-            .foregroundStyle(color)
-            .clipShape(Capsule())
-    }
-}
-
 // MARK: - Sign up
 
 struct SignUpView: View {
