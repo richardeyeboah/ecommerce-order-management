@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { lookupUspsCityState } from '../lib/address/usps-address-lookups'
-import { verifyUsDeliveryAddress } from '../lib/address/verify-us-address'
+import { isValidUsZip, verifyUsDeliveryAddress } from '../lib/address/verify-us-address'
 
 const GRAMBLING_INPUT = {
   line1: '403 Main Street',
@@ -11,6 +11,10 @@ const GRAMBLING_INPUT = {
 }
 
 test.describe('US delivery address verification', () => {
+  test('accepts USPS ZIP+4 postal codes', () => {
+    expect(isValidUsZip('12345-6789')).toBe(true)
+  })
+
   test('50314 resolves to Des Moines IA via USPS city-state lookup', async () => {
     test.skip(
       !process.env.USPS_API_CLIENT_ID?.trim() || !process.env.USPS_API_CLIENT_SECRET?.trim(),

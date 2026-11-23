@@ -7,7 +7,7 @@ import { useCart } from '@/context/CartContext'
 import { PageHeader } from '@/components/store/PageHeader'
 import { AddressAutocomplete } from '@/components/store/AddressAutocomplete'
 import { UsStateSelect } from '@/components/store/UsStateSelect'
-import { isUnitedStatesCountry } from '@/lib/address/verify-us-address'
+import { isUnitedStatesCountry, isValidUsZip } from '@/lib/address/verify-us-address'
 import type { ParsedAddress } from '@/lib/address/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -226,11 +226,12 @@ export function CheckoutClient({
     if (shippingMethod === 'pickup' || !isUnitedStatesCountry(form.country)) return
 
     const zip = form.postalCode.trim()
-    if (!/^\d{5}$/.test(zip)) return
+    if (!isValidUsZip(zip)) return
+    const zip5 = zip.slice(0, 5)
 
     const ctrl = new AbortController()
     const timer = window.setTimeout(() => {
-      fetch(`/api/address/city-state?ZIPCode=${encodeURIComponent(zip)}`, {
+      fetch(`/api/address/city-state?ZIPCode=${encodeURIComponent(zip5)}`, {
         signal: ctrl.signal,
       })
         .then((r) => r.json())
@@ -291,7 +292,7 @@ export function CheckoutClient({
     const city = form.city.trim()
     const state = form.state.trim()
     const zip = form.postalCode.trim()
-    if (line1.length < 5 || city.length < 2 || state.length < 2 || !/^\d{5}$/.test(zip)) {
+    if (line1.length < 5 || city.length < 2 || state.length < 2 || !isValidUsZip(zip)) {
       setAddressVerifyStatus('idle')
       setSuggestedAddress(null)
       setAddressVerifyError('')
