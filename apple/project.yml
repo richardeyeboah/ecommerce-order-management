@@ -18,6 +18,28 @@ packages:
     url: https://github.com/stripe/stripe-ios.git
     exactVersion: 25.9.0
 targets:
+  KintampoManager:
+    type: application
+    platform: iOS
+    sources:
+      - path: KintampoManager
+        excludes:
+          - Info.plist
+      - KintampoMarket/Models
+      - path: KintampoMarket/Services
+        excludes:
+          - PushRegistration.swift
+      - KintampoMarket/Theme
+      - KintampoMarket/Views/Components/OrderStatusViews.swift
+      - KintampoMarket/Views/Components/Skeletons.swift
+      - KintampoMarket/PrivacyInfo.xcprivacy
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kintampoafricanmarket.manager
+        INFOPLIST_FILE: KintampoManager/Info.plist
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
   KintampoMarket:
     type: application
     platform: iOS

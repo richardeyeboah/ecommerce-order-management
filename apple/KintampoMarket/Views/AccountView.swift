@@ -149,19 +149,8 @@ struct AccountView: View {
                 LabeledContent("Hours", value: StoreConfig.hours)
                 Button("Open website") { openURL(AppConfig.siteURL) }
             }
-
-            Section {
-                NavigationLink {
-                    StoreManagerView()
-                } label: {
-                    Label("Store manager", systemImage: "storefront")
-                }
-                .accessibilityIdentifier("storeManager")
-            } header: {
-                Text("For store staff")
-            } footer: {
-                Text("Sales, orders, stock and reviews. Uses the web admin password.")
-            }
+            // Store tools live in the separate Kintampo Manager app (apple/KintampoManager),
+            // so customers never see them and the shopping app ships without staff code.
         }
         .scrollContentBackground(.hidden)
         .background(Brand.surface)

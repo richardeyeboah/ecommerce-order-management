@@ -48,10 +48,18 @@ Do not open Safari checkout from the app for payment.
 
 After paying: cart clears only when status confirms an order. If confirmation is slow, use **Check payment status** — do not pay twice.
 
-## Store manager
+## Store manager: the Kintampo Manager app
 
-Account → **Store staff → Manage orders**. Sign in with `ADMIN_PASSWORD` (the same password as `/admin/login`).
-The app keeps the signed `admin_session` cookie, so staff stay signed in for the session TTL.
+Staff tools are a **separate app**, `KintampoManager` (bundle id `com.kintampoafricanmarket.manager`,
+dark icon), in the same Xcode project. Like Shopify, DoorDash Merchant or Amazon Seller, the shopping app
+contains no staff screens or staff code at all; customers never see a store-manager entry.
+
+- Code: `apple/KintampoManager/` (staff-only) plus the shared `KintampoMarket/Models`, `Services`,
+  `Theme` and two shared components. The customer target never compiles `KintampoManager/`.
+- Install it only on staff phones (Xcode, or TestFlight / unlisted App Store distribution once the
+  Apple Developer Program is active). The web dashboard at `/admin` remains for bulk work.
+- Sign in with `ADMIN_PASSWORD` (the same password as `/admin/login`). The app keeps the signed
+  `admin_session` cookie, so staff stay signed in for the session TTL.
 
 - **Needs action** queue (ordered / processing / ready for pickup) or all orders, a status filter, and search by name, email or `LQ-` number
 - One-tap **Mark <next step>** follows the pickup or shipping flow from `lib/order-status.ts`; pickup orders never offer carrier statuses
