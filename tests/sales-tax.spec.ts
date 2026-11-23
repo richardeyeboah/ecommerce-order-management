@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import {
+  calculateLegacySalesTax,
   calculateSalesTax,
   isCategoryTaxable,
   shouldApplyStoreSalesTax,
@@ -57,6 +58,15 @@ test.describe('Ohio category sales tax', () => {
     )
     expect(quote.applies).toBe(false)
     expect(quote.taxAmount).toBe(0)
+  })
+
+  test('legacy outstanding quotes retain their pre-deployment US tax basis', () => {
+    const quote = calculateLegacySalesTax(
+      [{ category: 'Non food', lineSubtotal: 15 }],
+      { country: 'US', state: 'Michigan' }
+    )
+    expect(quote.applies).toBe(true)
+    expect(quote.taxAmount).toBe(1.16)
   })
 
   test('out-of-state taxable merchandise remains untaxed', () => {

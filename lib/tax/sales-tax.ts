@@ -194,3 +194,42 @@ export function calculateSalesTax(
 
   return { applies, destination, rate, taxableSubtotal, taxAmount, jurisdictionLabel }
 }
+
+/**
+ * Reproduces quotes created before the Ohio-only nexus change. Use only for
+ * outstanding checkout snapshots that do not contain a frozen tax quote.
+ */
+export function calculateLegacySalesTax(
+  lines: TaxLineInput[],
+  dest: {
+    country?: string
+    state?: string
+    shippingMethod?: string
+  }
+): SalesTaxQuote {
+  const rate = getStoreSalesTaxRate()
+  const destination = resolveTaxDestination(dest)
+  const applies =
+    destination === 'pickup' || destination === 'us' || destination === 'unknown'
+  const pct = (rate * 100).toFixed(2).replace(/\.?0+$/, '')
+  const jurisdictionLabel =
+    destination === 'pickup'
+      ? `Store pickup · Columbus, OH (${pct}%)`
+      : destination === 'international'
+        ? ''
+        : `Columbus, OH rate (${pct}%)`
+
+  const taxableSubtotal =
+    Math.round(
+      lines.reduce(
+        (sum, line) =>
+          line.lineSubtotal > 0 && isCategoryTaxable(line.category)
+            ? sum + line.lineSubtotal
+            : sum,
+        0
+      ) * 100
+    ) / 100
+  const taxAmount = applies ? Math.round(taxableSubtotal * rate * 100) / 100 : 0
+
+  return { applies, destination, rate, taxableSubtotal, taxAmount, jurisdictionLabel }
+}

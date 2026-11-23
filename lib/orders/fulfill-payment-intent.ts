@@ -13,6 +13,7 @@ import {
   isGuestCheckoutMode,
   isGuestCheckoutUserId,
 } from '@/lib/orders/guest-checkout'
+import { calculateLegacySalesTax } from '@/lib/tax/sales-tax'
 
 const SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
@@ -115,8 +116,21 @@ export async function fulfillOrderFromPaymentIntent(
   let taxJurisdiction: string
   let tip: number
   let expectedTotal: number
+  let classificationByProduct = new Map<
+    string,
+    { category: string | null; taxClass: string | null }
+  >()
 
   if (hasFrozenQuote) {
+    classificationByProduct = new Map(
+      payload.items.map((item) => [
+        item.productId,
+        {
+          category: item.category?.trim() || null,
+          taxClass: item.taxClass?.trim() || null,
+        },
+      ])
+    )
     authoritativeItems = payload.items.map((item) => ({
       product_id: item.productId,
       product_name: item.productName!.trim(),
@@ -145,6 +159,15 @@ export async function fulfillOrderFromPaymentIntent(
     if (productMap.size !== candidateProductIds.length) {
       throw new Error('One or more products are no longer available')
     }
+    classificationByProduct = new Map(
+      [...productMap].map(([productId, product]) => [
+        productId,
+        {
+          category: product.category?.trim() || null,
+          taxClass: product.tax_class?.trim() || null,
+        },
+      ])
+    )
     const totals = computeCheckoutTotals({
       items: sanitizedItems,
       productMap,
@@ -157,13 +180,24 @@ export async function fulfillOrderFromPaymentIntent(
           : 0,
     })
     authoritativeItems = totals.orderItems
+    const legacyTax = calculateLegacySalesTax(
+      authoritativeItems.map((item) => ({
+        category: productMap.get(item.product_id)?.category ?? '',
+        lineSubtotal: item.subtotal,
+      })),
+      {
+        country: normalizedCountry,
+        state: normalizedState,
+        shippingMethod: payload.shipping_method,
+      }
+    )
     subtotal = totals.subtotal
     shippingFee = totals.shipping.fee
     shippingZone = totals.shipping.zone
-    taxAmount = totals.tax.taxAmount
-    taxRate = totals.tax.rate
-    taxableSubtotal = totals.tax.taxableSubtotal
-    taxJurisdiction = totals.tax.jurisdictionLabel
+    taxAmount = legacyTax.taxAmount
+    taxRate = legacyTax.rate
+    taxableSubtotal = legacyTax.taxableSubtotal
+    taxJurisdiction = legacyTax.jurisdictionLabel
     tip = totals.tip
     expectedTotal = totals.total
   }
@@ -209,11 +243,14 @@ export async function fulfillOrderFromPaymentIntent(
   }
 
   const pickupContactName = payload.pickup_contact_name?.trim() || null
-  const rpcItems = authoritativeItems.map((item, index) => ({
-    ...item,
-    product_category: payload.items[index]?.category ?? null,
-    tax_class: payload.items[index]?.taxClass ?? null,
-  }))
+  const rpcItems = authoritativeItems.map((item) => {
+    const classification = classificationByProduct.get(item.product_id)
+    return {
+      ...item,
+      product_category: classification?.category ?? null,
+      tax_class: classification?.taxClass ?? null,
+    }
+  })
   const { data: fulfillmentRows, error: fulfillmentError } = await supabaseAdmin.rpc(
     'create_paid_order_atomic',
     {
