@@ -44,6 +44,11 @@ def rel(p: Path) -> str:
     return str(p.relative_to(ROOT)).replace("\\", "/")
 
 
+# The customer app ships iPhone-only (TARGETED_DEVICE_FAMILY = 1): its layout is designed for
+# phones, and App Review rejects iPad builds that are a stretched phone layout. iPads can still
+# run it in iPhone compatibility mode. Revisit when there is a real iPad layout.
+
+
 def main() -> None:
     swifts = collect_swift()
     # Shared by iOS + Mac; Watch gets a slim set
@@ -404,9 +409,9 @@ def main() -> None:
 
     for cid, name, settings in [
         (d_ios_d, "Debug", target_settings("KintampoMarket/Info.plist", "com.kintampoafricanmarket.app", "KintampoMarket", "iphoneos",
-            "\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tCODE_SIGN_ENTITLEMENTS = KintampoMarket/KintampoMarket.entitlements;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;\n\t\t\t\tSUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\";\n\t\t\t\tTARGETED_DEVICE_FAMILY = \"1,2\";")),
+            "\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tCODE_SIGN_ENTITLEMENTS = KintampoMarket/KintampoMarket.entitlements;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;\n\t\t\t\tSUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\";\n\t\t\t\tSUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;\n\t\t\t\tTARGETED_DEVICE_FAMILY = 1;")),
         (d_ios_r, "Release", target_settings("KintampoMarket/Info.plist", "com.kintampoafricanmarket.app", "KintampoMarket", "iphoneos",
-            "\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tCODE_SIGN_ENTITLEMENTS = KintampoMarket/KintampoMarket.entitlements;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;\n\t\t\t\tSUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\";\n\t\t\t\tTARGETED_DEVICE_FAMILY = \"1,2\";")),
+            "\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tCODE_SIGN_ENTITLEMENTS = KintampoMarket/KintampoMarket.entitlements;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;\n\t\t\t\tSUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\";\n\t\t\t\tSUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;\n\t\t\t\tTARGETED_DEVICE_FAMILY = 1;")),
         (d_mac_d, "Debug", target_settings("\"KintampoMarket/Info-macOS.plist\"", "com.kintampoafricanmarket.app.mac", "KintampoMarketMac", "macosx",
             "\t\t\t\tMACOSX_DEPLOYMENT_TARGET = 14.0;")),
         (d_mac_r, "Release", target_settings("\"KintampoMarket/Info-macOS.plist\"", "com.kintampoafricanmarket.app.mac", "KintampoMarketMac", "macosx",

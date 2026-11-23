@@ -46,7 +46,16 @@ final class AuthStore {
     }
 
     func loadSocialProviders() async {
-        if let found = try? await SupabaseService.shared.enabledAuthProviders() { socialProviders = found }
+        if let found = try? await SupabaseService.shared.enabledAuthProviders() {
+            socialProviders = Self.offeredProviders(found)
+        }
+    }
+
+    /// App Store guideline 4.8: an app that offers a third-party login (Google) must also offer
+    /// Sign in with Apple. So Google is only shown when Apple is switched on too; turning on
+    /// Google alone in Supabase can't get the app rejected.
+    nonisolated static func offeredProviders(_ enabled: Set<String>) -> Set<String> {
+        enabled.contains("apple") ? enabled : enabled.subtracting(["google"])
     }
 
     func hydrate() async {

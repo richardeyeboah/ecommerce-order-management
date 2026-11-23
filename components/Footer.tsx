@@ -25,6 +25,7 @@ const ACCOUNT_LINKS = [
 ] as const
 
 const HELP_LINKS = [
+  { href: '/support', label: 'Support' },
   { href: '/faq', label: 'FAQ' },
   { href: '/shipping', label: 'Shipping' },
   { href: '/returns', label: 'Returns' },

@@ -332,7 +332,8 @@ B5F9497B0E085F1583A517A8 = {isa = XCRemoteSwiftPackageReference; repositoryURL =
 				CODE_SIGN_ENTITLEMENTS = KintampoMarket/KintampoMarket.entitlements;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				TARGETED_DEVICE_FAMILY = "1,2";
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = 1;
 			}; name = Debug; };
 		8C22E09ADA4254BAAE7546D0 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = C0EA9C719C39577ABB995F4F; buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -349,7 +350,8 @@ B5F9497B0E085F1583A517A8 = {isa = XCRemoteSwiftPackageReference; repositoryURL =
 				CODE_SIGN_ENTITLEMENTS = KintampoMarket/KintampoMarket.entitlements;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				TARGETED_DEVICE_FAMILY = "1,2";
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = 1;
 			}; name = Release; };
 		359AFD6581445F308760B047 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = C0EA9C719C39577ABB995F4F; buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
