@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { actorLabel } from '@/lib/auth/admin-actor'
 import { assertSameOrigin } from '@/lib/security/same-origin'
 import { createPhoneOrder } from '@/lib/orders/create-phone-order'
 import { normalizeOrderSource, normalizePaymentStatus } from '@/lib/orders/order-source'
@@ -133,6 +134,7 @@ export async function POST(req: NextRequest) {
     )
 
   const result = await createPhoneOrder({
+    changedBy: actorLabel(auth.actor),
     customerName: typeof body.customerName === 'string' ? body.customerName : '',
     customerPhone: typeof body.customerPhone === 'string' ? body.customerPhone : '',
     customerEmail: typeof body.customerEmail === 'string' ? body.customerEmail : null,

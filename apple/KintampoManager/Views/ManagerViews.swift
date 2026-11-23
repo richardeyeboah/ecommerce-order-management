@@ -3,29 +3,115 @@ import SwiftUI
 // MARK: - Store manager hub
 
 /// Entry point for store staff: sales, the order queue, stock and reviews in one place.
-/// Uses the same admin password session as the web dashboard.
+/// On iPhone it is one stack; on iPad (regular width) a sidebar with the work areas on the left.
 struct StoreManagerView: View {
     @Bindable private var admin = AdminStore.shared
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         Group {
             if !admin.checked {
-                List { SkeletonRows(count: 8, showsImage: false) }
+                NavigationStack {
+                    List { SkeletonRows(count: 8, showsImage: false) }
+                        .navigationTitle("Store manager")
+                }
             } else if admin.isSignedIn {
-                ManagerDashboard()
+                if sizeClass == .regular {
+                    ManagerSplitView()
+                } else {
+                    NavigationStack {
+                        ManagerDashboard()
+                            .navigationTitle("Store manager")
+                            #if os(iOS)
+                            .navigationBarTitleDisplayMode(.inline)
+                            #endif
+                    }
+                }
+            } else if admin.offline {
+                NavigationStack {
+                    ContentUnavailableView {
+                        Label("You're offline", systemImage: "wifi.slash")
+                    } description: {
+                        Text("Kintampo Manager needs a connection. You're still signed in.")
+                    } actions: {
+                        Button("Try again") { Task { await admin.retry() } }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    .navigationTitle("Store manager")
+                }
             } else {
-                AdminSignInView()
+                NavigationStack {
+                    AdminSignInView()
+                        .navigationTitle("Store manager")
+                        #if os(iOS)
+                        .navigationBarTitleDisplayMode(.inline)
+                        #endif
+                }
             }
         }
-        .navigationTitle("Store manager")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
         .task { await admin.restore() }
     }
 }
 
-private struct ManagerDashboard: View {
+/// iPad: work areas in a sidebar, the chosen one on the right with its own navigation.
+private struct ManagerSplitView: View {
+    enum Area: String, CaseIterable, Identifiable, Hashable {
+        case dashboard, orders, toShip, products, reviews, staff
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .dashboard: "Dashboard"
+            case .orders: "Orders"
+            case .toShip: "To ship"
+            case .products: "Products & stock"
+            case .reviews: "Reviews"
+            case .staff: "Staff"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .dashboard: "chart.bar.xaxis"
+            case .orders: "list.clipboard"
+            case .toShip: "shippingbox.and.arrow.backward"
+            case .products: "shippingbox"
+            case .reviews: "star.bubble"
+            case .staff: "person.2"
+            }
+        }
+    }
+
+    @State private var area: Area? = .dashboard
+
+    var body: some View {
+        NavigationSplitView {
+            List(Area.allCases, selection: $area) { item in
+                Label(item.title, systemImage: item.icon).tag(item)
+            }
+            .navigationTitle("Kintampo")
+        } detail: {
+            NavigationStack {
+                switch area ?? .dashboard {
+                case .dashboard:
+                    ManagerDashboard().navigationTitle("Dashboard")
+                case .orders:
+                    AdminOrdersView()
+                case .toShip:
+                    AdminOrdersView(initialQueue: .toShip)
+                case .products:
+                    InventoryView()
+                case .reviews:
+                    ReviewModerationView()
+                case .staff:
+                    StaffView()
+                }
+            }
+            .id(area)
+        }
+    }
+}
+
+struct ManagerDashboard: View {
+    @Bindable private var alerts = OrderAlerts.shared
     @State private var range: ManagerRange = .today
     @State private var summary: ManagerSummary?
     @State private var loadError: String?
@@ -79,6 +165,9 @@ private struct ManagerDashboard: View {
                 NavigationLink { ReviewModerationView() } label: {
                     Label("Reviews", systemImage: "star.bubble")
                 }
+                NavigationLink { StaffView() } label: {
+                    Label("Staff", systemImage: "person.2")
+                }
                 Button {
                     openURL(AppConfig.siteURL.appending(path: "admin"))
                 } label: {
@@ -87,12 +176,30 @@ private struct ManagerDashboard: View {
             } header: {
                 Text("Manage")
             } footer: {
-                Text("Refunds, shipping labels, announcements and new products are on the web dashboard.")
+                Text("Announcements and adding new products are on the web dashboard.")
             }
 
             Section {
-                Button("Sign out of store manager", role: .destructive) {
+                Toggle(isOn: Binding(
+                    get: { alerts.enabled },
+                    set: { on in Task { await alerts.setEnabled(on) } }
+                )) {
+                    Label("New order alerts", systemImage: "bell.badge")
+                }
+                if let note = alerts.permissionNote {
+                    Text(note).font(.caption).foregroundStyle(Brand.red)
+                }
+            } footer: {
+                Text("Alerts with sound while the app is open, and when iPhone checks in the background (every 15 minutes or more, decided by iOS).")
+            }
+
+            Section {
+                Button("Sign out", role: .destructive) {
                     Task { await AdminStore.shared.signOut() }
+                }
+            } footer: {
+                if let me = AdminStore.shared.identity {
+                    Text("Signed in as \(me.name) · \(me.roleLabel)")
                 }
             }
         }
@@ -104,6 +211,7 @@ private struct ManagerDashboard: View {
         do {
             summary = try await AdminAPI.shared.summary(range: range)
             loadError = nil
+            if let summary { OrderAlerts.shared.updateBadge(summary.needsAction) }
         } catch AppError.unauthorized {
             AdminStore.shared.sessionExpired()
         } catch {
@@ -311,6 +419,7 @@ struct InventoryView: View {
     @State private var loadError: String?
     @State private var editing: ManagerProduct?
     @State private var didApplyInitial = false
+    @State private var actionError: String?
 
     var body: some View {
         List {
@@ -387,6 +496,14 @@ struct InventoryView: View {
             }
             await reload()
         }
+        .alert("Couldn't update stock", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
+        }
         .sheet(item: $editing) { product in
             NavigationStack {
                 ProductStockEditor(product: product) { updated in
@@ -432,7 +549,8 @@ struct InventoryView: View {
         } catch AppError.unauthorized {
             AdminStore.shared.sessionExpired()
         } catch {
-            loadError = error.localizedDescription
+            // Keep the list on screen; a failed tap (e.g. no signal) is just reported.
+            actionError = error.localizedDescription
         }
     }
 }
@@ -590,6 +708,8 @@ struct ReviewModerationView: View {
     @State private var reviews: [ManagerReview] = []
     @State private var loaded = false
     @State private var loadError: String?
+    @State private var actionError: String?
+    @State private var pendingDelete: ManagerReview?
 
     var body: some View {
         List {
@@ -611,7 +731,8 @@ struct ReviewModerationView: View {
                                 Button("Approve") { Task { await approve(review) } }.tint(Brand.success)
                             }
                             .swipeActions(edge: .trailing) {
-                                Button("Delete", role: .destructive) { Task { await remove(review) } }
+                                // Not role: .destructive, which would remove the row before confirming.
+                                Button("Delete") { pendingDelete = review }.tint(Brand.red)
                             }
                     }
                 } footer: {
@@ -625,6 +746,25 @@ struct ReviewModerationView: View {
         #endif
         .refreshable { await load() }
         .task { await load() }
+        .confirmationDialog(
+            "Delete this review?",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingDelete
+        ) { review in
+            Button("Delete review", role: .destructive) { Task { await remove(review) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { review in
+            Text("\(review.reviewerName ?? "The customer")'s \(review.rating)-star review will be removed for good. It can't be undone.")
+        }
+        .alert("Couldn't update the review", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
+        }
     }
 
     private func load() async {
@@ -654,7 +794,7 @@ struct ReviewModerationView: View {
         } catch AppError.unauthorized {
             AdminStore.shared.sessionExpired()
         } catch {
-            loadError = error.localizedDescription
+            actionError = error.localizedDescription
         }
     }
 }

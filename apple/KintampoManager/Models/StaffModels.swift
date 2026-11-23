@@ -182,3 +182,54 @@ enum ManualPaymentMethod: String, CaseIterable, Identifiable, Sendable {
 }
 
 // MARK: - Home merchandising
+
+// MARK: - Staff accounts
+
+/// `GET /api/admin/me`: who is signed in.
+struct StaffIdentity: Codable, Hashable, Sendable {
+    let name: String
+    /// "owner" (store password), "staff" or "admin".
+    let role: String
+    let email: String?
+    let canManageStaff: Bool
+
+    var roleLabel: String {
+        switch role {
+        case "owner": "Owner (store password)"
+        case "admin": "Admin"
+        default: "Staff"
+        }
+    }
+}
+
+struct StaffMember: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let name: String?
+    let email: String?
+    let role: String
+    let addedAt: String?
+
+    var displayName: String { name ?? email ?? "Staff member" }
+}
+
+struct StaffList: Codable, Sendable {
+    let staff: [StaffMember]
+    var canManageStaff: Bool? = nil
+}
+
+/// Text helpers for the order detail screen (kept out of the view so tests can use them).
+enum AdminOrderDetailViewLabels {
+    /// "changed by" for the history list: a staff name, the owner, or an automatic update.
+    static func actor(_ raw: String) -> String? {
+        let value = raw.trimmingCharacters(in: .whitespaces)
+        switch value.lowercased() {
+        case "": return nil
+        case "admin", "admin-bulk": return "by staff"
+        case "owner", "owner (bulk)": return "by owner"
+        case "system", "customer", "checkout": return nil
+        default:
+            if value.contains("_") || value.lowercased().contains("webhook") { return "automatic" }
+            return "by \(value)"
+        }
+    }
+}

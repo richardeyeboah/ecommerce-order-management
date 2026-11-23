@@ -30,6 +30,14 @@ struct AdminOrdersView: View {
 }
 
 struct AdminSignInView: View {
+    enum Method: String, CaseIterable, Identifiable {
+        case account, storePassword
+        var id: String { rawValue }
+        var label: String { self == .account ? "My account" : "Store password" }
+    }
+
+    @AppStorage("manager.signInMethod") private var method: Method = .account
+    @AppStorage("manager.lastEmail") private var email = ""
     @State private var password = ""
     @State private var errorMessage: String?
     @State private var isLoading = false
@@ -69,13 +77,33 @@ struct AdminSignInView: View {
             .listRowBackground(Color.clear)
 
             Section {
-                SecureField("Admin password", text: $password)
+                Picker("Sign in with", selection: $method) {
+                    ForEach(Method.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+                .onChange(of: method) { _, _ in errorMessage = nil }
+            }
+
+            Section {
+                if method == .account {
+                    TextField("Email", text: $email)
+                        .textContentType(.username)
+                        #if os(iOS)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("staffEmail")
+                }
+                SecureField(method == .account ? "Password" : "Store password", text: $password)
                     .textContentType(.password)
                     .accessibilityIdentifier("adminPassword")
                     .onSubmit { Task { await signIn() } }
                 Button(isLoading ? "Signing in…" : "Sign in") { Task { await signIn() } }
                     .buttonStyle(PrimaryButtonStyle())
-                    .disabled(password.isEmpty || isLoading)
+                    .disabled(!canSubmit)
                     .formButtonRow()
                 if let errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.circle.fill")
@@ -83,23 +111,34 @@ struct AdminSignInView: View {
                         .foregroundStyle(Brand.red)
                 }
             } footer: {
-                Label("Same password as the web admin dashboard. You stay signed in on this phone.", systemImage: "lock.fill")
+                Label(method == .account
+                      ? "Your own store account (the one you shop with). The owner adds you under Staff."
+                      : "The owner's shared password, same as the web dashboard.",
+                      systemImage: "lock.fill")
             }
         }
         .scrollContentBackground(.hidden)
         .background(Brand.surface)
     }
 
+    private var trimmedEmail: String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var canSubmit: Bool {
+        !password.isEmpty && !isLoading && (method == .storePassword || trimmedEmail.contains("@"))
+    }
+
     private func signIn() async {
-        guard !password.isEmpty, !isLoading else { return }
+        guard canSubmit else { return }
         isLoading = true
         defer { isLoading = false }
         do {
-            try await AdminStore.shared.signIn(password: password)
+            try await AdminStore.shared.signIn(email: method == .account ? trimmedEmail : nil, password: password)
             password = ""
             errorMessage = nil
         } catch AppError.unauthorized {
-            errorMessage = "Incorrect password."
+            errorMessage = method == .account ? "Wrong email or password." : "Incorrect password."
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -373,6 +412,7 @@ struct AdminOrderDetailView: View {
     let orderID: String
     var onChange: () -> Void = {}
 
+
     @State private var detail: AdminOrderDetail?
     @State private var loadError: String?
     @State private var newStatus = ""
@@ -513,7 +553,8 @@ struct AdminOrderDetailView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(OrderStatusFlow.label(log.toStatus, shippingMethod: order.shippingMethod))
                                 .font(.subheadline.weight(.medium))
-                            Text(OrderStatusStyle.dateLabel(log.changedAt))
+                            Text([OrderStatusStyle.dateLabel(log.changedAt), log.changedBy.flatMap(AdminOrderDetailViewLabels.actor)]
+                                    .compactMap { $0 }.joined(separator: " · "))
                                 .font(.caption)
                                 .foregroundStyle(Brand.inkMuted)
                             if let note = log.note, !note.isEmpty {

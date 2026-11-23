@@ -47,7 +47,6 @@ type TrackOrderResponse = {
     from_status: string | null
     to_status: string
     changed_at: string
-    changed_by: string | null
     note: string | null
   }>
 }

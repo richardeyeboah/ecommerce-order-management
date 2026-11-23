@@ -9,10 +9,36 @@ struct AdminAPI {
     var session: URLSession = .shared
     var baseURL: URL = AppConfig.siteURL
 
-    func login(password: String) async throws {
+    /// Store password (owner) when `email` is nil, otherwise the staff member's own account.
+    func login(email: String? = nil, password: String) async throws {
         var request = jsonRequest(path: "api/admin/login", method: "POST")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["password": password])
+        var body = ["password": password]
+        if let email { body["email"] = email }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         _ = try await send(request)
+    }
+
+    /// Who is signed in. Older websites have no `/me`; callers treat failure as "unknown".
+    func me() async throws -> StaffIdentity {
+        let data = try await send(URLRequest(url: baseURL.appending(path: "api/admin/me")))
+        return try JSONDecoder().decode(StaffIdentity.self, from: data)
+    }
+
+    func staff() async throws -> StaffList {
+        let data = try await send(URLRequest(url: baseURL.appending(path: "api/admin/staff")))
+        return try JSONDecoder().decode(StaffList.self, from: data)
+    }
+
+    /// Gives staff access to an existing store account. Owner and admins only.
+    func addStaff(email: String) async throws -> [StaffMember] {
+        var request = jsonRequest(path: "api/admin/staff", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["email": email])
+        return try JSONDecoder().decode(StaffList.self, from: try await send(request)).staff
+    }
+
+    func removeStaff(id: String) async throws -> [StaffMember] {
+        let data = try await send(jsonRequest(path: "api/admin/staff/\(id)", method: "DELETE"))
+        return try JSONDecoder().decode(StaffList.self, from: data).staff
     }
 
     func logout() async throws {
@@ -167,32 +193,65 @@ final class AdminStore {
 
     var isSignedIn = false
     var checked = false
+    /// Set when the saved session couldn't be checked because there was no connection.
+    var offline = false
+    /// Who is signed in (nil on websites from before staff accounts).
+    var identity: StaffIdentity?
 
     /// A stored cookie may still be valid from an earlier launch; probe once.
     func restore() async {
         guard !checked else { return }
+        await probe()
+    }
+
+    /// Re-checks after "You're offline" → Retry.
+    func retry() async {
+        offline = false
+        checked = false
+        await probe()
+    }
+
+    private func probe() async {
         do {
             _ = try await AdminAPI.shared.orders(queue: .needsAction, status: nil, search: "")
             isSignedIn = true
+            offline = false
+            identity = try? await AdminAPI.shared.me()
+        } catch AppError.unauthorized {
+            isSignedIn = false
+        } catch let error as URLError where Self.isConnectionError(error) {
+            // No signal is not the same as signed out: keep the session and offer Retry.
+            offline = true
         } catch {
             isSignedIn = false
         }
         checked = true
     }
 
-    func signIn(password: String) async throws {
-        try await AdminAPI.shared.login(password: password)
+    func signIn(email: String? = nil, password: String) async throws {
+        try await AdminAPI.shared.login(email: email, password: password)
         isSignedIn = true
+        offline = false
         checked = true
+        identity = try? await AdminAPI.shared.me()
     }
 
     func signOut() async {
         try? await AdminAPI.shared.logout()
         isSignedIn = false
+        identity = nil
+        OrderAlerts.shared.reset()
     }
 
     /// Called when any admin request comes back 401/403.
     func sessionExpired() {
         isSignedIn = false
+        identity = nil
+    }
+
+    nonisolated static func isConnectionError(_ error: URLError) -> Bool {
+        [.notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotFindHost,
+         .cannotConnectToHost, .dnsLookupFailed, .internationalRoamingOff, .dataNotAllowed]
+            .contains(error.code)
     }
 }

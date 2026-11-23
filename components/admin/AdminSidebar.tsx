@@ -16,6 +16,7 @@ import {
   Search,
   ShoppingBag,
   Truck,
+  UserCog,
   Users,
   X,
 } from 'lucide-react'
@@ -40,6 +41,7 @@ const NAV_GROUPS = [
       { href: '/admin/shipping', label: 'Shipping', icon: Truck },
       { href: '/admin/reviews', label: 'Reviews', icon: MessageSquareText },
       { href: '/admin/announcements', label: 'Announcements', icon: Megaphone },
+      { href: '/admin/staff', label: 'Staff', icon: UserCog },
     ],
   },
 ] as const
@@ -56,6 +58,7 @@ const PAGE_NAMES: Array<[string, string]> = [
   ['/admin/shipping', 'Shipping'],
   ['/admin/reviews', 'Reviews'],
   ['/admin/announcements', 'Announcements'],
+  ['/admin/staff', 'Staff'],
   ['/admin', 'Overview'],
 ]
 

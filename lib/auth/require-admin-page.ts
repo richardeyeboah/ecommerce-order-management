@@ -1,7 +1,8 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createClientOptional } from '@/lib/supabase/server'
-import { ADMIN_COOKIE_NAME, verifyAdminSessionToken } from '@/lib/auth/admin-session'
+import { ADMIN_COOKIE_NAME, readAdminSessionToken } from '@/lib/auth/admin-session'
+import { loadStaffActor } from '@/lib/auth/admin-actor'
 import { isSupabaseAdminRoleBypassEnabled } from '@/lib/auth/admin-access-mode'
 
 /**
@@ -13,8 +14,13 @@ import { isSupabaseAdminRoleBypassEnabled } from '@/lib/auth/admin-access-mode'
  */
 export async function requireAdminPage(): Promise<void> {
   const cookieStore = await cookies()
-  const sessionToken = cookieStore.get(ADMIN_COOKIE_NAME)?.value
-  if (await verifyAdminSessionToken(sessionToken)) return
+  const session = await readAdminSessionToken(cookieStore.get(ADMIN_COOKIE_NAME)?.value)
+  if (session) {
+    if (session.subject === 'owner') return
+    // Staff sessions: their role is checked each time, so removed staff lose access at once.
+    if (await loadStaffActor(session.subject)) return
+    redirect('/admin/login?error=forbidden')
+  }
 
   if (!isSupabaseAdminRoleBypassEnabled()) {
     redirect('/admin/login')

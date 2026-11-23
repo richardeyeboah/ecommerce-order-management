@@ -1,15 +1,18 @@
 /**
  * HMAC-signed admin session token (Edge-compatible — uses Web Crypto, no node:crypto).
  *
- * Token format: `${version}.${expiresAt}.${signatureBase64Url}`
- * - version:    schema tag, currently "v1"
- * - expiresAt:  unix seconds when the token expires
- * - signature:  HMAC-SHA256(secret, `${version}.${expiresAt}`)
+ * Token formats:
+ * - v1 (store password, older cookies): `v1.${expiresAt}.${signature}`
+ * - v2 (who signed in):                  `v2.${expiresAt}.${subject}.${signature}`
+ *   subject is `owner` for the store password, or a staff member's user id.
+ * The signature is HMAC-SHA256(secret, everything before it).
  *
  * The cookie value never contains the admin password — only this short-lived signed token.
  */
 
-const ENCODER_VERSION = 'v1'
+const ENCODER_VERSION = 'v2'
+/** Subject for sessions opened with the shared store password. */
+export const OWNER_SUBJECT = 'owner'
 export const ADMIN_COOKIE_NAME = 'admin_session'
 export const ADMIN_SESSION_TTL_SECONDS = 60 * 60 * 8 // 8 hours
 
@@ -58,33 +61,48 @@ async function signPayload(payload: string): Promise<string> {
   return toBase64Url(sig)
 }
 
-export async function createAdminSessionToken(now: number = Date.now()): Promise<{
+export async function createAdminSessionToken(
+  now: number = Date.now(),
+  subject: string = OWNER_SUBJECT
+): Promise<{
   token: string
   expiresAt: number
 }> {
+  if (!/^[A-Za-z0-9-]{1,64}$/.test(subject)) throw new Error('Invalid admin session subject.')
   const expiresAt = Math.floor(now / 1000) + ADMIN_SESSION_TTL_SECONDS
-  const payload = `${ENCODER_VERSION}.${expiresAt}`
+  const payload = `${ENCODER_VERSION}.${expiresAt}.${subject}`
   const sig = await signPayload(payload)
   return { token: `${payload}.${sig}`, expiresAt }
 }
 
-export async function verifyAdminSessionToken(
+/**
+ * Checks the signature and expiry and returns who the session belongs to, or null.
+ * v1 cookies (before staff accounts) count as the owner. This does not check that a staff
+ * member still has access; `getAdminActor` does that on the server.
+ */
+export async function readAdminSessionToken(
   token: string | undefined | null,
   now: number = Date.now()
-): Promise<boolean> {
-  if (!token || typeof token !== 'string') return false
+): Promise<{ subject: string } | null> {
+  if (!token || typeof token !== 'string') return null
   const parts = token.split('.')
-  if (parts.length !== 3) return false
-  const [version, expiresAtRaw, sigB64] = parts
-  if (version !== ENCODER_VERSION) return false
+  let expiresAtRaw: string, subject: string, sigB64: string
+  if (parts.length === 3 && parts[0] === 'v1') {
+    ;[, expiresAtRaw, sigB64] = parts
+    subject = OWNER_SUBJECT
+  } else if (parts.length === 4 && parts[0] === 'v2') {
+    ;[, expiresAtRaw, subject, sigB64] = parts
+  } else {
+    return null
+  }
   const expiresAt = Number(expiresAtRaw)
-  if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(now / 1000)) return false
+  if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(now / 1000)) return null
 
   let key: CryptoKey
   try {
     key = await importKey(getSecret())
   } catch {
-    return false
+    return null
   }
 
   let sigBytes: ArrayBuffer
@@ -94,19 +112,23 @@ export async function verifyAdminSessionToken(
     // is not directly assignable when the buffer might be SharedArrayBuffer in strict TS).
     sigBytes = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer
   } catch {
-    return false
+    return null
   }
 
+  const signed = parts.slice(0, -1).join('.')
   try {
-    return await crypto.subtle.verify(
-      'HMAC',
-      key,
-      sigBytes,
-      new TextEncoder().encode(`${version}.${expiresAtRaw}`)
-    )
+    const valid = await crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(signed))
+    return valid ? { subject } : null
   } catch {
-    return false
+    return null
   }
+}
+
+export async function verifyAdminSessionToken(
+  token: string | undefined | null,
+  now: number = Date.now()
+): Promise<boolean> {
+  return (await readAdminSessionToken(token, now)) !== null
 }
 
 /** Constant-time string equality using Web Crypto verify (Edge-safe). */

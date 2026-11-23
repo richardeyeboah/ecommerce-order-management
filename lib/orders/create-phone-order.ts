@@ -24,6 +24,8 @@ export type PhoneOrderLineInput = {
 }
 
 export type CreatePhoneOrderInput = {
+  /** Who took the order, for the order history. */
+  changedBy?: string
   customerName: string
   customerPhone: string
   customerEmail?: string | null
@@ -288,7 +290,7 @@ export async function createPhoneOrder(
     order_id: order.id,
     from_status: null,
     to_status: 'ordered',
-    changed_by: 'admin',
+    changed_by: input.changedBy ?? 'admin',
     note: logNoteParts.join(' · '),
   })
 
